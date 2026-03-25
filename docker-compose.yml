@@ -8,12 +8,39 @@ services:
       MH_DEBUG: "true"
       MH_HOST: "0.0.0.0"
       MH_PORT: "8500"
+      MH_PROXY_ENABLED: "true"
+      MH_UPSTREAMS_CONFIG: "upstreams.yaml"
+
+      # GitLab (local)
       MH_GITLAB_URL: "http://gitlab.steelcanvas.studio"
       MH_GITLAB_TOKEN: "${MH_GITLAB_TOKEN:-}"
-      MH_KUBE_CONFIG: ""
+
+      # Upstream API keys — set these to enable upstream servers
+      MH_GITHUB_TOKEN: "${MH_GITHUB_TOKEN:-}"
+      MH_BRAVE_API_KEY: "${MH_BRAVE_API_KEY:-}"
+      MH_TAVILY_API_KEY: "${MH_TAVILY_API_KEY:-}"
+      MH_EXA_API_KEY: "${MH_EXA_API_KEY:-}"
+      MH_OPENAI_API_KEY: "${MH_OPENAI_API_KEY:-}"
+      MH_HF_TOKEN: "${MH_HF_TOKEN:-}"
+      MH_WOLFRAM_APP_ID: "${MH_WOLFRAM_APP_ID:-}"
+
+      # Monitoring upstreams
+      MH_PROMETHEUS_URL: "${MH_PROMETHEUS_URL:-http://prometheus.steelcanvas.studio}"
+      MH_GRAFANA_URL: "${MH_GRAFANA_URL:-http://grafana.steelcanvas.studio}"
+      MH_GRAFANA_API_KEY: "${MH_GRAFANA_API_KEY:-}"
+
+      # Database upstreams
+      MH_PROXY_POSTGRES_URL: "${MH_PROXY_POSTGRES_URL:-}"
+      MH_REDIS_URL: "${MH_REDIS_URL:-}"
+
+      # S3/MinIO
+      MH_S3_ACCESS_KEY: "${MH_S3_ACCESS_KEY:-}"
+      MH_S3_SECRET_KEY: "${MH_S3_SECRET_KEY:-}"
+      MH_S3_ENDPOINT: "${MH_S3_ENDPOINT:-}"
     volumes:
       - ${HOME}/.git-credentials:/run/secrets/git-credentials:ro
       - ${HOME}/.kube:/home/lemon/.kube:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       db:
         condition: service_healthy

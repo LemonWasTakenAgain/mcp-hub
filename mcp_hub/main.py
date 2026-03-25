@@ -1,9 +1,10 @@
-"""FastAPI application - web dashboard + MCP SSE endpoint."""
+"""FastAPI application - web dashboard + MCP SSE endpoint + proxy management."""
 
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -16,13 +17,37 @@ from mcp_hub.config import settings
 from mcp_hub.database import engine, get_session
 from mcp_hub.mcp_server import mcp
 from mcp_hub.models import Base, ToolLog
+from mcp_hub.proxy.env_resolver import resolve_registry
+from mcp_hub.proxy.manager import ProxyManager
+from mcp_hub.proxy.registry import UpstreamRegistry
 
 logger = logging.getLogger("mcp_hub")
+
+# Global proxy manager instance
+proxy_manager: ProxyManager | None = None
+
+
+def _load_registry() -> UpstreamRegistry:
+    """Load upstream registry from config file or defaults."""
+    config_path = Path(settings.upstreams_config)
+    if config_path.exists():
+        logger.info("Loading upstream config from %s", config_path)
+        registry = UpstreamRegistry.from_yaml(config_path)
+    else:
+        logger.info("No upstreams.yaml found, using built-in defaults")
+        from mcp_hub.proxy.defaults import get_default_registry
+        registry = get_default_registry()
+
+    # Resolve ${ENV_VAR} placeholders
+    resolve_registry(registry)
+    return registry
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
+    global proxy_manager
+
     logging.basicConfig(
         level=logging.DEBUG if settings.debug else logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
@@ -34,8 +59,24 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables ensured")
 
+    # Start proxy manager — connect to all enabled upstream MCP servers
+    if settings.proxy_enabled:
+        registry = _load_registry()
+        enabled = registry.get_enabled()
+        logger.info(
+            "Proxy enabled: %d upstream servers configured, %d enabled",
+            len(registry.servers), len(enabled),
+        )
+        proxy_manager = ProxyManager(registry=registry, mcp_server=mcp)
+        await proxy_manager.start()
+    else:
+        logger.info("Proxy disabled (set MH_PROXY_ENABLED=true to enable)")
+
     yield
 
+    # Shutdown
+    if proxy_manager:
+        await proxy_manager.stop()
     await engine.dispose()
     logger.info("MCP Hub shut down")
 
@@ -83,8 +124,15 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     # Total invocations
     total = (await session.execute(select(func.count(ToolLog.id)))).scalar() or 0
 
-    # List registered tools from the MCP server
+    # List registered tools from the MCP server (local + proxied)
     registered_tools = sorted(mcp._tool_manager._tools.keys())
+
+    # Proxy status
+    proxy_status = proxy_manager.get_status() if proxy_manager else None
+
+    # Separate local vs proxied tools
+    local_tools = [t for t in registered_tools if "__" not in t]
+    proxied_tools = [t for t in registered_tools if "__" in t]
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -94,7 +142,10 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "recent_logs": recent_logs,
             "total_invocations": total,
             "registered_tools": registered_tools,
+            "local_tools": local_tools,
+            "proxied_tools": proxied_tools,
             "tool_count": len(registered_tools),
+            "proxy_status": proxy_status,
         },
     )
 
@@ -109,24 +160,64 @@ async def health(session: AsyncSession = Depends(get_session)):
         db_ok = False
 
     registered_tools = list(mcp._tool_manager._tools.keys())
-    return {
+    result = {
         "status": "healthy" if db_ok else "degraded",
         "database": "connected" if db_ok else "disconnected",
         "mcp_tools": len(registered_tools),
         "version": "0.1.0",
     }
 
+    if proxy_manager:
+        ps = proxy_manager.get_status()
+        result["proxy"] = {
+            "enabled": True,
+            "servers_connected": ps["connected"],
+            "servers_total": ps["total_servers"],
+            "proxied_tools": ps["total_proxied_tools"],
+        }
+
+    return result
+
 
 @app.get("/api/tools")
 async def list_tools():
-    """List all registered MCP tools."""
+    """List all registered MCP tools (local + proxied)."""
     tools = []
     for name, tool in mcp._tool_manager._tools.items():
+        source = "local"
+        if proxy_manager and name in proxy_manager.get_tool_map():
+            source = proxy_manager.get_tool_map()[name]
         tools.append({
             "name": name,
             "description": tool.description,
+            "source": source,
         })
-    return {"tools": tools}
+    return {"tools": tools, "total": len(tools)}
+
+
+@app.get("/api/proxy/status")
+async def proxy_status():
+    """Get proxy manager status — all upstream connections."""
+    if not proxy_manager:
+        return {"enabled": False, "message": "Proxy is disabled"}
+    return proxy_manager.get_status()
+
+
+@app.post("/api/proxy/reconnect/{server_name}")
+async def proxy_reconnect(server_name: str):
+    """Reconnect to a specific upstream MCP server."""
+    if not proxy_manager:
+        return {"error": "Proxy is disabled"}
+    success = await proxy_manager.reconnect(server_name)
+    return {"server": server_name, "reconnected": success}
+
+
+@app.get("/api/proxy/tools")
+async def proxy_tool_map():
+    """Get the mapping of proxied tool names to upstream sources."""
+    if not proxy_manager:
+        return {"enabled": False}
+    return {"tool_map": proxy_manager.get_tool_map()}
 
 
 @app.get("/api/logs")

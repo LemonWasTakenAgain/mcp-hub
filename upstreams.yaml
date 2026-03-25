@@ -1,0 +1,336 @@
+# MCP Hub — Upstream Server Configuration
+#
+# This file defines which external MCP servers to proxy through MCP Hub.
+# Set enabled: true and provide required API keys via environment variables.
+#
+# Transport types:
+#   stdio — spawns a local process (npx/uvx) and communicates over stdin/stdout
+#   sse   — connects to a remote HTTP SSE endpoint
+#
+# Environment variables are resolved from ${VAR_NAME} placeholders.
+# All tools are namespaced with the prefix (e.g., brave__web_search).
+#
+# To add a custom MCP server, just add a new entry below.
+
+upstreams:
+
+  # ── SEARCH & WEB ──────────────────────────────────────────────
+
+  brave-search:
+    transport: stdio
+    enabled: false  # Set MH_BRAVE_API_KEY to enable
+    description: "Brave Search API — web search, local search, news"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-brave-search"]
+    env:
+      BRAVE_API_KEY: "${MH_BRAVE_API_KEY}"
+    prefix: brave
+
+  tavily:
+    transport: stdio
+    enabled: false
+    description: "Tavily AI search — optimized search for AI agents"
+    command: npx
+    args: ["-y", "tavily-mcp@latest"]
+    env:
+      TAVILY_API_KEY: "${MH_TAVILY_API_KEY}"
+    prefix: tavily
+
+  exa:
+    transport: stdio
+    enabled: false
+    description: "Exa — neural/semantic search engine"
+    command: npx
+    args: ["-y", "exa-mcp-server"]
+    env:
+      EXA_API_KEY: "${MH_EXA_API_KEY}"
+    prefix: exa
+
+  fetch:
+    transport: stdio
+    enabled: true
+    description: "Fetch web pages and convert to markdown (no API key)"
+    command: uvx
+    args: ["mcp-server-fetch"]
+    prefix: web
+
+  puppeteer:
+    transport: stdio
+    enabled: false
+    description: "Browser automation — navigate, screenshot, interact"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-puppeteer"]
+    prefix: browser
+
+  # ── CODE & DEVELOPMENT ────────────────────────────────────────
+
+  github:
+    transport: stdio
+    enabled: true
+    description: "GitHub API — repos, issues, PRs, actions, code search"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${MH_GITHUB_TOKEN}"
+    prefix: github
+
+  docker:
+    transport: stdio
+    enabled: true
+    description: "Docker — containers, images, volumes, networks"
+    command: npx
+    args: ["-y", "mcp-docker"]
+    prefix: docker
+
+  # ── DATABASES ─────────────────────────────────────────────────
+
+  postgres:
+    transport: stdio
+    enabled: false
+    description: "PostgreSQL — query any Postgres database"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-postgres", "${MH_PROXY_POSTGRES_URL}"]
+    prefix: pg
+
+  sqlite:
+    transport: stdio
+    enabled: false
+    description: "SQLite — read and query SQLite databases"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-sqlite", "${MH_SQLITE_PATH}"]
+    prefix: sqlite
+
+  redis:
+    transport: stdio
+    enabled: false
+    description: "Redis — key-value, pub/sub, data structures"
+    command: npx
+    args: ["-y", "redis-mcp", "${MH_REDIS_URL}"]
+    prefix: redis
+
+  qdrant:
+    transport: stdio
+    enabled: false
+    description: "Qdrant — vector database, semantic search, embeddings"
+    command: uvx
+    args: ["mcp-server-qdrant"]
+    env:
+      QDRANT_URL: "${MH_QDRANT_URL}"
+      QDRANT_API_KEY: "${MH_QDRANT_API_KEY}"
+    prefix: qdrant
+
+  # ── KNOWLEDGE & RESEARCH ──────────────────────────────────────
+
+  arxiv:
+    transport: stdio
+    enabled: true
+    description: "Arxiv — search and read academic papers (no API key)"
+    command: uvx
+    args: ["mcp-server-arxiv"]
+    prefix: arxiv
+
+  wikipedia:
+    transport: stdio
+    enabled: true
+    description: "Wikipedia — search and read articles (no API key)"
+    command: npx
+    args: ["-y", "mcp-server-wikipedia"]
+    prefix: wiki
+
+  wolfram-alpha:
+    transport: stdio
+    enabled: false
+    description: "Wolfram Alpha — computation, math, data analysis"
+    command: npx
+    args: ["-y", "mcp-wolfram-alpha"]
+    env:
+      WOLFRAM_APP_ID: "${MH_WOLFRAM_APP_ID}"
+    prefix: wolfram
+
+  # ── FILES & STORAGE ───────────────────────────────────────────
+
+  filesystem:
+    transport: stdio
+    enabled: true
+    description: "Filesystem — read, write, search files in allowed dirs"
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "/home/lemon/projects"
+      - "/home/lemon/shared"
+    prefix: fs
+
+  s3:
+    transport: stdio
+    enabled: false
+    description: "S3/MinIO — bucket and object operations"
+    command: npx
+    args: ["-y", "mcp-s3"]
+    env:
+      AWS_ACCESS_KEY_ID: "${MH_S3_ACCESS_KEY}"
+      AWS_SECRET_ACCESS_KEY: "${MH_S3_SECRET_KEY}"
+      AWS_ENDPOINT_URL: "${MH_S3_ENDPOINT}"
+      AWS_REGION: us-east-1
+    prefix: s3
+
+  gdrive:
+    transport: stdio
+    enabled: false
+    description: "Google Drive — search, read, manage Drive files"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-gdrive"]
+    prefix: gdrive
+
+  # ── COMMUNICATION ─────────────────────────────────────────────
+
+  slack:
+    transport: stdio
+    enabled: false
+    description: "Slack — channels, messages, search, users"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-slack"]
+    env:
+      SLACK_BOT_TOKEN: "${MH_SLACK_BOT_TOKEN}"
+    prefix: slack
+
+  discord:
+    transport: stdio
+    enabled: false
+    description: "Discord — channels, messages, server management"
+    command: npx
+    args: ["-y", "mcp-discord"]
+    env:
+      DISCORD_TOKEN: "${MH_DISCORD_TOKEN}"
+    prefix: discord
+
+  linear:
+    transport: stdio
+    enabled: false
+    description: "Linear — issues, projects, sprints, teams"
+    command: npx
+    args: ["-y", "mcp-linear"]
+    env:
+      LINEAR_API_KEY: "${MH_LINEAR_API_KEY}"
+    prefix: linear
+
+  notion:
+    transport: stdio
+    enabled: false
+    description: "Notion — pages, databases, blocks"
+    command: npx
+    args: ["-y", "mcp-notion"]
+    env:
+      NOTION_API_KEY: "${MH_NOTION_API_KEY}"
+    prefix: notion
+
+  # ── AI & ML ───────────────────────────────────────────────────
+
+  huggingface:
+    transport: stdio
+    enabled: false
+    description: "HuggingFace — models, datasets, spaces, inference"
+    command: npx
+    args: ["-y", "mcp-huggingface"]
+    env:
+      HF_TOKEN: "${MH_HF_TOKEN}"
+    prefix: hf
+
+  openai:
+    transport: stdio
+    enabled: false
+    description: "OpenAI — GPT, embeddings, DALL-E, Whisper"
+    command: npx
+    args: ["-y", "mcp-openai"]
+    env:
+      OPENAI_API_KEY: "${MH_OPENAI_API_KEY}"
+    prefix: openai
+
+  # ── MONITORING ────────────────────────────────────────────────
+
+  prometheus:
+    transport: stdio
+    enabled: false
+    description: "Prometheus — metrics, alerts, targets"
+    command: uvx
+    args: ["mcp-server-prometheus", "--url", "${MH_PROMETHEUS_URL}"]
+    prefix: prom
+
+  grafana:
+    transport: stdio
+    enabled: false
+    description: "Grafana — dashboards, datasources, alerts"
+    command: npx
+    args: ["-y", "mcp-grafana"]
+    env:
+      GRAFANA_URL: "${MH_GRAFANA_URL}"
+      GRAFANA_API_KEY: "${MH_GRAFANA_API_KEY}"
+    prefix: grafana
+
+  sentry:
+    transport: stdio
+    enabled: false
+    description: "Sentry — error tracking, issues, performance"
+    command: npx
+    args: ["-y", "mcp-server-sentry"]
+    env:
+      SENTRY_AUTH_TOKEN: "${MH_SENTRY_TOKEN}"
+    prefix: sentry
+
+  # ── CLOUD & INFRA ─────────────────────────────────────────────
+
+  cloudflare:
+    transport: stdio
+    enabled: false
+    description: "Cloudflare — DNS, Workers, Pages, WAF, analytics"
+    command: npx
+    args: ["-y", "@cloudflare/mcp-server-cloudflare"]
+    env:
+      CLOUDFLARE_API_TOKEN: "${MH_CLOUDFLARE_TOKEN}"
+    prefix: cf
+
+  terraform:
+    transport: stdio
+    enabled: false
+    description: "Terraform — state, plan, resources, modules"
+    command: npx
+    args: ["-y", "mcp-terraform"]
+    prefix: tf
+
+  # ── UTILITIES ─────────────────────────────────────────────────
+
+  memory:
+    transport: stdio
+    enabled: true
+    description: "Persistent knowledge graph memory (no API key)"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-memory"]
+    prefix: memory
+
+  time:
+    transport: stdio
+    enabled: true
+    description: "Time — current time, timezone conversions (no API key)"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-time"]
+    prefix: time
+
+  sequential-thinking:
+    transport: stdio
+    enabled: true
+    description: "Structured step-by-step reasoning (no API key)"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    prefix: think
+
+  # ── CUSTOM SSE SERVERS ────────────────────────────────────────
+  # Add your own remote MCP servers here:
+  #
+  # my-custom-server:
+  #   transport: sse
+  #   enabled: true
+  #   description: "My custom MCP server"
+  #   url: "http://my-server:8080/mcp/sse"
+  #   headers:
+  #     Authorization: "Bearer ${MH_CUSTOM_TOKEN}"
+  #   prefix: custom

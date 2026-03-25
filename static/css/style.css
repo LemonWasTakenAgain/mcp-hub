@@ -206,6 +206,76 @@ ul li::before { content: "-> "; color: var(--text-muted); }
     font-size: 0.9rem;
 }
 
+/* Upstream Server Cards */
+.upstream-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.75rem;
+}
+
+.upstream-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+}
+
+.upstream-card.connected { border-left: 3px solid var(--success); }
+.upstream-card.disconnected { border-left: 3px solid var(--error); }
+
+.upstream-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.upstream-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.dot-green { background: var(--success); box-shadow: 0 0 6px rgba(74, 222, 128, 0.4); }
+.dot-red { background: var(--error); box-shadow: 0 0 6px rgba(248, 113, 113, 0.4); }
+
+.upstream-name { font-weight: 600; font-size: 0.9rem; }
+.upstream-transport {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: var(--bg);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.upstream-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.35rem;
+}
+
+.btn-reconnect {
+    margin-top: 0.5rem;
+    background: var(--accent-dim);
+    color: var(--text);
+    border: none;
+    border-radius: 4px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.btn-reconnect:hover { background: var(--accent); }
+.btn-reconnect:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Tool card variants */
+.tool-card.local { border-left: 2px solid var(--accent); }
+.tool-card.proxied { border-left: 2px solid var(--warning); }
+
+.stat-card.status-warning .stat-value { color: var(--warning); }
+
 /* Footer */
 footer {
     text-align: center;
