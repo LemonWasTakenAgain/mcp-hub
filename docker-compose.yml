@@ -1,0 +1,40 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8500:8500"
+    environment:
+      MH_DATABASE_URL: postgresql+asyncpg://mcphub:mcphub@db:5432/mcphub
+      MH_DEBUG: "true"
+      MH_HOST: "0.0.0.0"
+      MH_PORT: "8500"
+      MH_GITLAB_URL: "http://gitlab.steelcanvas.studio"
+      MH_GITLAB_TOKEN: "${MH_GITLAB_TOKEN:-}"
+      MH_KUBE_CONFIG: ""
+    volumes:
+      - ${HOME}/.git-credentials:/run/secrets/git-credentials:ro
+      - ${HOME}/.kube:/home/lemon/.kube:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mcphub
+      POSTGRES_USER: mcphub
+      POSTGRES_PASSWORD: mcphub
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcphub"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

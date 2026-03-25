@@ -1,0 +1,97 @@
+stages:
+  - lint
+  - test
+  - build
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  PYTHON_IMAGE: python:3.11-slim
+
+# -- Lint --
+
+lint:ruff:
+  stage: lint
+  image: $PYTHON_IMAGE
+  script:
+    - pip install ruff
+    - ruff check .
+    - ruff format --check .
+  cache:
+    paths:
+      - .pip-cache/
+
+lint:mypy:
+  stage: lint
+  image: $PYTHON_IMAGE
+  script:
+    - pip install mypy .[dev]
+    - mypy mcp_hub/
+  allow_failure: true
+  cache:
+    paths:
+      - .pip-cache/
+
+# -- Test --
+
+test:unit:
+  stage: test
+  image: $PYTHON_IMAGE
+  services:
+    - postgres:16-alpine
+  variables:
+    POSTGRES_DB: mcphub_test
+    POSTGRES_USER: mcphub
+    POSTGRES_PASSWORD: mcphub
+    MH_DATABASE_URL: postgresql+asyncpg://mcphub:mcphub@postgres:5432/mcphub_test
+  script:
+    - pip install .[dev]
+    - pytest --cov=mcp_hub --cov-report=term-missing -v
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  cache:
+    paths:
+      - .pip-cache/
+
+test:security:
+  stage: test
+  image: $PYTHON_IMAGE
+  script:
+    - pip install bandit safety
+    - bandit -r mcp_hub/ -ll
+    - safety check --bare 2>/dev/null || true
+  allow_failure: true
+  cache:
+    paths:
+      - .pip-cache/
+
+# -- Build --
+
+build:docker:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build -t $IMAGE_TAG -t $IMAGE_LATEST .
+    - docker push $IMAGE_TAG
+    - docker push $IMAGE_LATEST
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# -- Deploy --
+
+deploy:k8s:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  script:
+    - kubectl set image deployment/mcp-hub mcp-hub=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA -n mcp-hub
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual

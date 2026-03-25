@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Hub - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="logo">&#9881;</span>
+            <h1>MCP Hub</h1>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="active">Dashboard</a>
+            <a href="/health">Health</a>
+            <a href="/docs">API Docs</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <!-- Stats Cards -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{{ tool_count }}</div>
+                <div class="stat-label">Registered Tools</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_invocations }}</div>
+                <div class="stat-label">Total Invocations</div>
+            </div>
+            <div class="stat-card status-healthy">
+                <div class="stat-value">Online</div>
+                <div class="stat-label">MCP Server Status</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">SSE</div>
+                <div class="stat-label">Transport</div>
+            </div>
+        </section>
+
+        <!-- Registered Tools -->
+        <section class="panel">
+            <h2>Registered Tools</h2>
+            <div class="tools-grid">
+                {% for tool in registered_tools %}
+                <div class="tool-card">
+                    <span class="tool-icon">&#128295;</span>
+                    <span class="tool-name">{{ tool }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Two Column Layout -->
+        <div class="two-col">
+            <!-- Tool Usage Stats -->
+            <section class="panel">
+                <h2>Tool Usage</h2>
+                {% if tool_stats %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tool</th>
+                            <th>Calls</th>
+                            <th>Avg Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stat in tool_stats %}
+                        <tr>
+                            <td>{{ stat.tool_name }}</td>
+                            <td>{{ stat.count }}</td>
+                            <td>{{ "%.1f"|format(stat.avg_duration or 0) }}ms</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="empty-state">No tool invocations yet. Connect an MCP client to get started.</p>
+                {% endif %}
+            </section>
+
+            <!-- Recent Activity -->
+            <section class="panel">
+                <h2>Recent Activity</h2>
+                {% if recent_logs %}
+                <div class="log-list">
+                    {% for log in recent_logs %}
+                    <div class="log-entry {{ log.status }}">
+                        <div class="log-header">
+                            <span class="log-tool">{{ log.tool_name }}</span>
+                            <span class="log-status {{ log.status }}">{{ log.status }}</span>
+                        </div>
+                        <div class="log-meta">
+                            {% if log.duration_ms %}{{ "%.0f"|format(log.duration_ms) }}ms{% endif %}
+                            {% if log.caller %} &middot; {{ log.caller }}{% endif %}
+                            &middot; {{ log.created_at.strftime('%H:%M:%S') }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="empty-state">No recent activity.</p>
+                {% endif %}
+            </section>
+        </div>
+
+        <!-- Connection Info -->
+        <section class="panel connection-info">
+            <h2>Connect to MCP Hub</h2>
+            <div class="connection-grid">
+                <div>
+                    <h3>Claude Code</h3>
+                    <p>Add to your <code>settings.json</code>:</p>
+                    <pre><code>{
+  "mcpServers": {
+    "mcp-hub": {
+      "type": "sse",
+      "url": "http://mcp-hub.steelcanvas.studio/mcp/sse"
+    }
+  }
+}</code></pre>
+                </div>
+                <div>
+                    <h3>API Endpoints</h3>
+                    <ul>
+                        <li><code>GET /health</code> - Health check</li>
+                        <li><code>GET /api/tools</code> - List tools</li>
+                        <li><code>GET /api/logs</code> - Invocation logs</li>
+                        <li><code>GET /mcp/sse</code> - MCP SSE endpoint</li>
+                        <li><code>GET /docs</code> - OpenAPI docs</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>MCP Hub v0.1.0 &middot; Internal Homelab Platform</p>
+    </footer>
+</body>
+</html>
