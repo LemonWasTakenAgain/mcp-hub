@@ -7,6 +7,8 @@ import platform
 import shutil
 from datetime import datetime, timezone
 
+from mcp_hub.tools._validation import validate_hostname, validate_port, validate_url
+
 
 async def system_info() -> str:
     """Get system information for the host running MCP Hub."""
@@ -53,6 +55,11 @@ async def ping_host(host: str) -> str:
     Args:
         host: Hostname or IP address to ping
     """
+    try:
+        host = validate_hostname(host)
+    except ValueError as e:
+        return f"Invalid host: {e}"
+
     proc = await asyncio.create_subprocess_exec(
         "ping", "-c", "3", "-W", "2", host,
         stdout=asyncio.subprocess.PIPE,
@@ -72,6 +79,12 @@ async def check_service(host: str, port: int) -> str:
         port: TCP port number
     """
     try:
+        host = validate_hostname(host)
+        port = validate_port(port)
+    except ValueError as e:
+        return f"Invalid input: {e}"
+
+    try:
         _, writer = await asyncio.wait_for(
             asyncio.open_connection(host, port), timeout=5.0
         )
@@ -90,6 +103,11 @@ async def dns_lookup(hostname: str) -> str:
     Args:
         hostname: Domain name to resolve
     """
+    try:
+        hostname = validate_hostname(hostname)
+    except ValueError as e:
+        return f"Invalid hostname: {e}"
+
     proc = await asyncio.create_subprocess_exec(
         "dig", "+short", hostname,
         stdout=asyncio.subprocess.PIPE,
@@ -108,6 +126,11 @@ async def http_check(url: str) -> str:
     Args:
         url: Full URL to check (e.g., http://gitlab.homelab.local)
     """
+    try:
+        url = validate_url(url)
+    except ValueError as e:
+        return f"Invalid URL: {e}"
+
     import httpx
 
     try:

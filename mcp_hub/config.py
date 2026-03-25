@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_endpoint: str = ""
+    fs_allowed_dirs: str = "/home/lemon/projects,/home/lemon/shared"
 
     @property
     def sync_database_url(self) -> str:

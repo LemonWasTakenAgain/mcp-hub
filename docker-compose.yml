@@ -37,6 +37,9 @@ services:
       MH_S3_ACCESS_KEY: "${MH_S3_ACCESS_KEY:-}"
       MH_S3_SECRET_KEY: "${MH_S3_SECRET_KEY:-}"
       MH_S3_ENDPOINT: "${MH_S3_ENDPOINT:-}"
+
+      # Filesystem
+      MH_FS_ALLOWED_DIRS: "${MH_FS_ALLOWED_DIRS:-/home/lemon/projects,/home/lemon/shared}"
     volumes:
       - ${HOME}/.git-credentials:/run/secrets/git-credentials:ro
       - ${HOME}/.kube:/home/lemon/.kube:ro

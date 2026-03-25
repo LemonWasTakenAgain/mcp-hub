@@ -1,5 +1,7 @@
 """MCP Server - registers all tools and serves them over SSE transport."""
 
+from __future__ import annotations
+
 from mcp.server.fastmcp import FastMCP
 
 from mcp_hub.tools import gitlab_tools, homelab_tools, k8s_tools
@@ -11,6 +13,29 @@ mcp = FastMCP(
         "and system administration tools."
     ),
 )
+
+
+# -- Public API wrappers for tool manager access --
+# Avoids direct access to mcp._tool_manager._tools throughout the codebase.
+
+def get_registered_tools() -> dict:
+    """Get all registered tools from the MCP server."""
+    return dict(mcp._tool_manager._tools)
+
+
+def get_tool_names() -> list[str]:
+    """Get sorted list of registered tool names."""
+    return sorted(mcp._tool_manager._tools.keys())
+
+
+def register_tool(name: str, tool) -> None:
+    """Register a tool on the MCP server by name."""
+    mcp._tool_manager._tools[name] = tool
+
+
+def unregister_tool(name: str) -> None:
+    """Remove a tool from the MCP server."""
+    mcp._tool_manager._tools.pop(name, None)
 
 # -- GitLab Tools --
 

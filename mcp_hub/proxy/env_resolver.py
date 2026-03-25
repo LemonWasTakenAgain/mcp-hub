@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 
 from mcp_hub.proxy.registry import UpstreamRegistry, UpstreamServer
+
+logger = logging.getLogger("mcp_hub.proxy")
 
 ENV_PATTERN = re.compile(r"\$\{(\w+)\}")
 
@@ -14,9 +17,17 @@ def resolve_env_vars(value: str) -> str:
     """Replace ${VAR_NAME} placeholders with actual environment variable values."""
     def _replace(match: re.Match) -> str:
         var_name = match.group(1)
-        return os.environ.get(var_name, "")
+        resolved = os.environ.get(var_name, "")
+        if not resolved:
+            logger.warning("Environment variable %s is not set", var_name)
+        return resolved
 
     return ENV_PATTERN.sub(_replace, value)
+
+
+def has_unresolved_vars(value: str) -> bool:
+    """Check if a string still has ${VAR} placeholders."""
+    return bool(ENV_PATTERN.search(value))
 
 
 def resolve_server_env(server: UpstreamServer) -> UpstreamServer:
@@ -43,14 +54,13 @@ def resolve_registry(registry: UpstreamRegistry) -> UpstreamRegistry:
 
 
 def check_server_ready(server: UpstreamServer) -> tuple[bool, str]:
-    """Check if a server has all required env vars resolved (no empty required values)."""
-    # Check if env vars that were referenced are now resolved
-    for key, value in server.env.items():
-        if not value and ENV_PATTERN.search(server.env.get(key, "")):
-            return False, f"Missing environment variable for {key}"
+    """Check if a server has all required configuration to connect."""
+    if not server.command and not server.url:
+        return False, "No command (stdio) or URL (sse) specified"
 
-    # Check command exists
-    if not server.command:
-        return False, "No command specified"
+    # Check for empty args that were supposed to be env vars
+    for arg in server.args:
+        if not arg.strip():
+            return False, f"Empty argument (likely missing env var)"
 
     return True, "Ready"

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from mcp_hub.mcp_server import register_tool, unregister_tool
 from mcp_hub.proxy.connector import UpstreamConnection
 from mcp_hub.proxy.registry import UpstreamRegistry, UpstreamServer
 
@@ -24,6 +25,7 @@ class ProxyManager:
         self.connections: dict[str, UpstreamConnection] = {}
         self._tool_map: dict[str, tuple[UpstreamConnection, str]] = {}
         self._health_task: asyncio.Task | None = None
+        self._reconnect_locks: dict[str, asyncio.Lock] = {}
 
     async def start(self) -> None:
         """Connect to all enabled upstream servers and register their tools."""
@@ -133,21 +135,25 @@ class ProxyManager:
             description=description,
             parameters=input_schema if input_schema else {"type": "object", "properties": {}},
         )
-        self.mcp_server._tool_manager._tools[proxied_name] = tool
+        register_tool(proxied_name, tool)
 
     async def _health_loop(self) -> None:
         """Periodically check upstream connections and reconnect if needed."""
         while True:
             await asyncio.sleep(60)
-            for name, conn in self.connections.items():
+            for name, conn in list(self.connections.items()):
                 if not conn.connected and conn.server.auto_restart and conn.server.enabled:
-                    logger.info("Attempting reconnect to %s...", name)
-                    try:
-                        await conn.connect()
-                        self._register_proxied_tools(conn)
-                        logger.info("Reconnected to %s", name)
-                    except Exception as e:
-                        logger.warning("Reconnect to %s failed: %s", name, e)
+                    lock = self._reconnect_locks.setdefault(name, asyncio.Lock())
+                    if lock.locked():
+                        continue  # Already reconnecting via manual reconnect()
+                    async with lock:
+                        logger.info("Attempting reconnect to %s...", name)
+                        try:
+                            await conn.connect()
+                            self._register_proxied_tools(conn)
+                            logger.info("Reconnected to %s", name)
+                        except Exception as e:
+                            logger.warning("Reconnect to %s failed: %s", name, e)
 
     async def stop(self) -> None:
         """Disconnect from all upstream servers."""
@@ -168,22 +174,25 @@ class ProxyManager:
         """Manually reconnect to a specific upstream server."""
         if name not in self.connections:
             return False
-        conn = self.connections[name]
-        await conn.disconnect()
 
-        # Remove old proxied tools
-        prefix = conn.server.tool_prefix
-        to_remove = [k for k in self._tool_map if k.startswith(prefix)]
-        for k in to_remove:
-            del self._tool_map[k]
-            self.mcp_server._tool_manager._tools.pop(k, None)
+        lock = self._reconnect_locks.setdefault(name, asyncio.Lock())
+        async with lock:
+            conn = self.connections[name]
+            await conn.disconnect()
 
-        try:
-            await conn.connect()
-            self._register_proxied_tools(conn)
-            return True
-        except Exception:
-            return False
+            # Remove old proxied tools
+            prefix = conn.server.tool_prefix
+            to_remove = [k for k in self._tool_map if k.startswith(prefix)]
+            for k in to_remove:
+                del self._tool_map[k]
+                unregister_tool(k)
+
+            try:
+                await conn.connect()
+                self._register_proxied_tools(conn)
+                return True
+            except Exception:
+                return False
 
     async def add_server(self, server: UpstreamServer) -> bool:
         """Add and connect to a new upstream server at runtime."""

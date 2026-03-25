@@ -82,6 +82,7 @@
         <!-- Local Tools -->
         <section class="panel">
             <h2>Local Tools (built-in)</h2>
+            <input type="text" class="search-input" placeholder="Filter tools..." oninput="filterTools(this)">
             <div class="tools-grid">
                 {% for tool in local_tools %}
                 <div class="tool-card local">
@@ -96,6 +97,7 @@
         {% if proxied_tools %}
         <section class="panel">
             <h2>Proxied Tools (from upstream servers)</h2>
+            <input type="text" class="search-input" placeholder="Filter tools..." oninput="filterTools(this)">
             <div class="tools-grid">
                 {% for tool in proxied_tools %}
                 <div class="tool-card proxied">
@@ -202,7 +204,7 @@
     <script>
     async function reconnect(name) {
         const btn = event.target;
-        btn.textContent = 'Connecting...';
+        btn.innerHTML = '<span class="spinner"></span> Connecting...';
         btn.disabled = true;
         try {
             const resp = await fetch(`/api/proxy/reconnect/${name}`, {method: 'POST'});
@@ -218,6 +220,29 @@
             setTimeout(() => { btn.textContent = 'Reconnect'; btn.disabled = false; }, 2000);
         }
     }
+
+    function filterTools(input) {
+        const query = input.value.toLowerCase();
+        const grid = input.nextElementSibling;
+        for (const card of grid.children) {
+            const name = card.querySelector('.tool-name').textContent.toLowerCase();
+            card.style.display = name.includes(query) ? '' : 'none';
+        }
+    }
+
+    // Auto-refresh upstream status every 30s
+    setInterval(async () => {
+        try {
+            const resp = await fetch('/api/proxy/status');
+            if (resp.ok) {
+                const badge = document.querySelector('.stat-card.status-healthy .stat-value, .stat-card.status-warning .stat-value');
+                if (badge) {
+                    const data = await resp.json();
+                    badge.textContent = data.connected + '/' + data.total_servers;
+                }
+            }
+        } catch(e) {}
+    }, 30000);
     </script>
 </body>
 </html>

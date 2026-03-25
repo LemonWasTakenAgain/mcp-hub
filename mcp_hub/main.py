@@ -15,13 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mcp_hub.config import settings
 from mcp_hub.database import engine, get_session
-from mcp_hub.mcp_server import mcp
+from mcp_hub.mcp_server import get_registered_tools, get_tool_names, mcp
 from mcp_hub.models import Base, ToolLog
 from mcp_hub.proxy.env_resolver import resolve_registry
 from mcp_hub.proxy.manager import ProxyManager
 from mcp_hub.proxy.registry import UpstreamRegistry
+from mcp_hub.metrics import TOTAL_TOOLS, UPSTREAM_CONNECTED, UPSTREAM_TOOLS, metrics_endpoint
 
 logger = logging.getLogger("mcp_hub")
+
+# Resolve template/static paths relative to package, not cwd
+_BASE_DIR = Path(__file__).resolve().parent.parent
+_TEMPLATES_DIR = _BASE_DIR / "templates"
+_STATIC_DIR = _BASE_DIR / "static"
 
 # Global proxy manager instance
 proxy_manager: ProxyManager | None = None
@@ -30,6 +36,8 @@ proxy_manager: ProxyManager | None = None
 def _load_registry() -> UpstreamRegistry:
     """Load upstream registry from config file or defaults."""
     config_path = Path(settings.upstreams_config)
+    if not config_path.is_absolute():
+        config_path = _BASE_DIR / config_path
     if config_path.exists():
         logger.info("Loading upstream config from %s", config_path)
         registry = UpstreamRegistry.from_yaml(config_path)
@@ -38,7 +46,6 @@ def _load_registry() -> UpstreamRegistry:
         from mcp_hub.proxy.defaults import get_default_registry
         registry = get_default_registry()
 
-    # Resolve ${ENV_VAR} placeholders
     resolve_registry(registry)
     return registry
 
@@ -55,11 +62,14 @@ async def lifespan(app: FastAPI):
     logger.info("MCP Hub starting up")
 
     # Auto-create tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables ensured")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables ensured")
+    except Exception as e:
+        logger.error("Database initialization failed: %s", e)
 
-    # Start proxy manager — connect to all enabled upstream MCP servers
+    # Start proxy manager
     if settings.proxy_enabled:
         registry = _load_registry()
         enabled = registry.get_enabled()
@@ -74,7 +84,6 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
     if proxy_manager:
         await proxy_manager.stop()
     await engine.dispose()
@@ -84,16 +93,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MCP Hub",
     description="Internal MCP server and AI tools platform",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 # Mount MCP SSE transport at /mcp
 mcp_app = mcp.sse_app()
 app.mount("/mcp", mcp_app)
+app.add_route("/metrics", metrics_endpoint)
 
 
 # -- Dashboard Routes --
@@ -101,36 +111,40 @@ app.mount("/mcp", mcp_app)
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)):
     """Main dashboard page."""
-    # Get tool usage stats
-    tool_stats = (
-        await session.execute(
-            select(
-                ToolLog.tool_name,
-                func.count(ToolLog.id).label("count"),
-                func.avg(ToolLog.duration_ms).label("avg_duration"),
+    tool_stats = []
+    recent_logs = []
+    total = 0
+
+    try:
+        tool_stats = (
+            await session.execute(
+                select(
+                    ToolLog.tool_name,
+                    func.count(ToolLog.id).label("count"),
+                    func.avg(ToolLog.duration_ms).label("avg_duration"),
+                )
+                .group_by(ToolLog.tool_name)
+                .order_by(func.count(ToolLog.id).desc())
             )
-            .group_by(ToolLog.tool_name)
-            .order_by(func.count(ToolLog.id).desc())
-        )
-    ).all()
+        ).all()
 
-    # Get recent invocations
-    recent_logs = (
-        await session.execute(
-            select(ToolLog).order_by(ToolLog.created_at.desc()).limit(20)
-        )
-    ).scalars().all()
+        recent_logs = (
+            await session.execute(
+                select(ToolLog).order_by(ToolLog.created_at.desc()).limit(20)
+            )
+        ).scalars().all()
 
-    # Total invocations
-    total = (await session.execute(select(func.count(ToolLog.id)))).scalar() or 0
+        total = (await session.execute(select(func.count(ToolLog.id)))).scalar() or 0
+    except Exception as e:
+        logger.error("Dashboard DB query failed: %s", e)
 
-    # List registered tools from the MCP server (local + proxied)
-    registered_tools = sorted(mcp._tool_manager._tools.keys())
-
-    # Proxy status
+    registered_tools = get_tool_names()
+    TOTAL_TOOLS.set(len(registered_tools))
     proxy_status = proxy_manager.get_status() if proxy_manager else None
-
-    # Separate local vs proxied tools
+    if proxy_status:
+        for srv in proxy_status.get("servers", []):
+            UPSTREAM_CONNECTED.labels(server_name=srv["name"]).set(1 if srv["connected"] else 0)
+            UPSTREAM_TOOLS.labels(server_name=srv["name"]).set(srv["tools"])
     local_tools = [t for t in registered_tools if "__" not in t]
     proxied_tools = [t for t in registered_tools if "__" in t]
 
@@ -159,12 +173,12 @@ async def health(session: AsyncSession = Depends(get_session)):
     except Exception:
         db_ok = False
 
-    registered_tools = list(mcp._tool_manager._tools.keys())
+    tool_names = get_tool_names()
     result = {
         "status": "healthy" if db_ok else "degraded",
         "database": "connected" if db_ok else "disconnected",
-        "mcp_tools": len(registered_tools),
-        "version": "0.1.0",
+        "mcp_tools": len(tool_names),
+        "version": "0.2.0",
     }
 
     if proxy_manager:
@@ -183,10 +197,9 @@ async def health(session: AsyncSession = Depends(get_session)):
 async def list_tools():
     """List all registered MCP tools (local + proxied)."""
     tools = []
-    for name, tool in mcp._tool_manager._tools.items():
-        source = "local"
-        if proxy_manager and name in proxy_manager.get_tool_map():
-            source = proxy_manager.get_tool_map()[name]
+    tool_map = proxy_manager.get_tool_map() if proxy_manager else {}
+    for name, tool in get_registered_tools().items():
+        source = tool_map.get(name, "local")
         tools.append({
             "name": name,
             "description": tool.description,
@@ -196,7 +209,7 @@ async def list_tools():
 
 
 @app.get("/api/proxy/status")
-async def proxy_status():
+async def proxy_status_endpoint():
     """Get proxy manager status — all upstream connections."""
     if not proxy_manager:
         return {"enabled": False, "message": "Proxy is disabled"}
@@ -228,7 +241,11 @@ async def get_logs(
     query = select(ToolLog).order_by(ToolLog.created_at.desc()).limit(min(limit, 200))
     if tool_name:
         query = query.where(ToolLog.tool_name == tool_name)
-    logs = (await session.execute(query)).scalars().all()
+    try:
+        logs = (await session.execute(query)).scalars().all()
+    except Exception as e:
+        logger.error("Log query failed: %s", e)
+        return {"logs": [], "error": str(e)}
     return {
         "logs": [
             {

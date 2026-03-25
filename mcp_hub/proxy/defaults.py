@@ -212,8 +212,7 @@ def get_default_registry() -> UpstreamRegistry:
         command="npx",
         args=[
             "-y", "@modelcontextprotocol/server-filesystem",
-            "/home/lemon/projects",
-            "/home/lemon/shared",
+            "${MH_FS_ALLOWED_DIRS}",
         ],
         prefix="fs",
     ))
