@@ -79,7 +79,7 @@ upstreams:
     enabled: true
     description: "Docker — containers, images, volumes, networks"
     command: npx
-    args: ["-y", "mcp-docker"]
+    args: ["-y", "mcp-server-docker"]
     prefix: docker
 
   # ── DATABASES ─────────────────────────────────────────────────
@@ -126,7 +126,7 @@ upstreams:
     enabled: true
     description: "Arxiv — search and read academic papers (no API key)"
     command: uvx
-    args: ["mcp-server-arxiv"]
+    args: ["arxiv-mcp-server"]
     prefix: arxiv
 
   wikipedia:
@@ -134,7 +134,7 @@ upstreams:
     enabled: true
     description: "Wikipedia — search and read articles (no API key)"
     command: npx
-    args: ["-y", "mcp-server-wikipedia"]
+    args: ["-y", "wikipedia-mcp"]
     prefix: wiki
 
   wolfram-alpha:
@@ -157,7 +157,7 @@ upstreams:
     args:
       - "-y"
       - "@modelcontextprotocol/server-filesystem"
-      - "${MH_FS_ALLOWED_DIRS}"
+      - "/app"
     prefix: fs
 
   s3:
@@ -259,11 +259,11 @@ upstreams:
     transport: stdio
     enabled: true
     description: "Grafana — dashboards, Prometheus queries, incidents, alerting"
-    command: npx
-    args: ["-y", "@grafana/mcp-grafana"]
+    command: uvx
+    args: ["mcp-grafana"]
     env:
       GRAFANA_URL: "${MH_GRAFANA_URL}"
-      GRAFANA_API_KEY: "${MH_GRAFANA_API_KEY}"
+      GRAFANA_SERVICE_ACCOUNT_TOKEN: "${MH_GRAFANA_API_KEY}"
     prefix: grafana
 
   sentry:
@@ -293,7 +293,7 @@ upstreams:
     enabled: true
     description: "HashiCorp Terraform — registry docs, provider schemas, module search"
     command: npx
-    args: ["-y", "@hashicorp/terraform-mcp-server"]
+    args: ["-y", "terraform-mcp-server"]
     prefix: tf
 
   # ── INFRASTRUCTURE ──────────────────────────────────────────
@@ -303,18 +303,18 @@ upstreams:
     enabled: true
     description: "ArgoCD — application management, sync, rollback, health status"
     command: npx
-    args: ["-y", "@argoproj-labs/mcp-for-argocd"]
+    args: ["-y", "argocd-mcp@latest", "stdio"]
     env:
       ARGOCD_BASE_URL: "${MH_ARGOCD_URL}"
-      ARGOCD_AUTH_TOKEN: "${MH_ARGOCD_TOKEN}"
+      ARGOCD_API_TOKEN: "${MH_ARGOCD_TOKEN}"
     prefix: argocd
 
   loki:
     transport: stdio
-    enabled: true
-    description: "Grafana Loki — log queries, label browsing, log analysis"
+    enabled: false
+    description: "Grafana Loki — log queries, label browsing, log analysis (requires Go build)"
     command: npx
-    args: ["-y", "@grafana/loki-mcp"]
+    args: ["-y", "grafana-loki-mcp"]
     env:
       LOKI_URL: "${MH_LOKI_URL}"
     prefix: loki
@@ -332,10 +332,10 @@ upstreams:
 
   sonarqube:
     transport: stdio
-    enabled: true
-    description: "SonarQube — code quality, security analysis, issue tracking"
+    enabled: false
+    description: "SonarQube — code quality, security analysis (package not yet published)"
     command: npx
-    args: ["-y", "@sonarsource/sonarqube-mcp-server"]
+    args: ["-y", "oe-sonar-mcp"]
     env:
       SONARQUBE_URL: "${MH_SONARQUBE_URL}"
       SONARQUBE_TOKEN: "${MH_SONARQUBE_TOKEN}"
@@ -343,8 +343,8 @@ upstreams:
 
   netbox:
     transport: stdio
-    enabled: true
-    description: "NetBox — DCIM, IPAM, circuits, devices, racks, IP addresses"
+    enabled: false
+    description: "NetBox — DCIM, IPAM, circuits, devices, racks (package not yet published)"
     command: npx
     args: ["-y", "@netboxlabs/netbox-mcp-server"]
     env:
@@ -379,7 +379,7 @@ upstreams:
     command: npx
     args: ["-y", "n8n-mcp-server"]
     env:
-      N8N_BASE_URL: "${MH_N8N_URL}"
+      N8N_API_URL: "${MH_N8N_URL}"
       N8N_API_KEY: "${MH_N8N_API_KEY}"
     prefix: n8n
 
@@ -397,8 +397,8 @@ upstreams:
     transport: stdio
     enabled: true
     description: "Time — current time, timezone conversions (no API key)"
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-time"]
+    command: uvx
+    args: ["mcp-server-time", "--local-timezone=America/New_York"]
     prefix: time
 
   sequential-thinking:

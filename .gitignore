@@ -17,3 +17,4 @@ htmlcov/
 .mypy_cache/
 *.log
 .DS_Store
+.gstack/

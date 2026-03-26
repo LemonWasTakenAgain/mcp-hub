@@ -60,6 +60,7 @@ services:
       - ${HOME}/.git-credentials:/run/secrets/git-credentials:ro
       - ${HOME}/.kube:/home/lemon/.kube:ro
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./upstreams.yaml:/app/upstreams.yaml:ro
     depends_on:
       db:
         condition: service_healthy
