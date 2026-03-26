@@ -141,12 +141,15 @@ class ProxyManager:
 
         # Use the low-level tool manager to register with the proper schema
         from mcp.server.fastmcp.tools import Tool as FastMCPTool
+        from mcp.server.fastmcp.utilities.func_metadata import func_metadata
 
         tool = FastMCPTool(
             fn=proxy_handler,
             name=proxied_name,
             description=description,
             parameters=input_schema if input_schema else {"type": "object", "properties": {}},
+            fn_metadata=func_metadata(proxy_handler),
+            is_async=True,
         )
         register_tool(proxied_name, tool)
 
