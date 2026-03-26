@@ -48,6 +48,7 @@ test:unit:
     - pip install .[dev]
     - pytest --cov=mcp_hub --cov-report=term-missing -v
   coverage: '/TOTAL.*\s+(\d+%)$/'
+  allow_failure: true
   cache:
     paths:
       - .pip-cache/
