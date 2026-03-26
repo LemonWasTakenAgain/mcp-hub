@@ -48,7 +48,6 @@ test:unit:
     - pip install .[dev]
     - pytest --cov=mcp_hub --cov-report=term-missing -v
   coverage: '/TOTAL.*\s+(\d+%)$/'
-  allow_failure: true
   cache:
     paths:
       - .pip-cache/
@@ -71,13 +70,20 @@ build:docker:
   stage: build
   image: docker:27
   services:
-    - docker:27-dind
+    - name: docker:27-dind
+      command: ["--insecure-registry", "$CI_REGISTRY"]
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_DRIVER: overlay2
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
     IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - |
+      # Configure Docker client to use insecure registry
+      mkdir -p /etc/docker
+      echo "{\"insecure-registries\": [\"$CI_REGISTRY\"]}" > /etc/docker/daemon.json
+      # Login using HTTP fallback
+      docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY || true
   script:
     - docker build -t $IMAGE_TAG -t $IMAGE_LATEST .
     - docker push $IMAGE_TAG
