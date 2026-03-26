@@ -110,7 +110,7 @@ upstreams:
 
   qdrant:
     transport: stdio
-    enabled: false
+    enabled: true
     description: "Qdrant — vector database, semantic search, embeddings"
     command: uvx
     args: ["mcp-server-qdrant"]
@@ -225,6 +225,16 @@ upstreams:
 
   # ── AI & ML ───────────────────────────────────────────────────
 
+  ollama:
+    transport: stdio
+    enabled: true
+    description: "Ollama — local LLM inference, embeddings generation (CPU)"
+    command: npx
+    args: ["-y", "ollama-mcp"]
+    env:
+      OLLAMA_HOST: "${MH_OLLAMA_URL}"
+    prefix: ollama
+
   huggingface:
     transport: stdio
     enabled: false
@@ -249,7 +259,7 @@ upstreams:
 
   prometheus:
     transport: stdio
-    enabled: false
+    enabled: true
     description: "Prometheus — metrics, alerts, targets"
     command: uvx
     args: ["mcp-server-prometheus", "--url", "${MH_PROMETHEUS_URL}"]
@@ -321,7 +331,7 @@ upstreams:
 
   vault:
     transport: stdio
-    enabled: false
+    enabled: true
     description: "HashiCorp Vault — secrets management, mounts, policies"
     command: npx
     args: ["-y", "@hashicorp/vault-mcp-server"]

@@ -42,7 +42,13 @@ RUN npx -y @modelcontextprotocol/server-github --help 2>/dev/null || true \
     && npx -y mcp-server-kubernetes --help 2>/dev/null || true \
     && uvx mcp-server-time --help 2>/dev/null || true \
     && uvx arxiv-mcp-server --help 2>/dev/null || true \
-    && uvx mcp-grafana --help 2>/dev/null || true
+    && uvx mcp-grafana --help 2>/dev/null || true \
+    && uvx mcp-server-prometheus --help 2>/dev/null || true \
+    && uvx mcp-server-qdrant --help 2>/dev/null || true \
+    && npx -y ollama-mcp --help 2>/dev/null || true \
+    && npx -y @hashicorp/vault-mcp-server --help 2>/dev/null || true \
+    && npx -y n8n-mcp-server --help 2>/dev/null || true \
+    && uvx mcp-proxmox --help 2>/dev/null || true
 
 EXPOSE 8500
 
