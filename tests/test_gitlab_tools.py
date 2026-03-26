@@ -1,6 +1,6 @@
 """Test GitLab tools with mocked HTTP client."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -14,10 +14,10 @@ from mcp_hub.tools.gitlab_tools import (
 
 
 def _mock_response(json_data, status_code=200):
-    resp = AsyncMock()
+    resp = MagicMock()
     resp.json.return_value = json_data
     resp.status_code = status_code
-    resp.raise_for_status = AsyncMock()
+    resp.raise_for_status = MagicMock()
     return resp
 
 

@@ -17,7 +17,14 @@ def validate_hostname(host: str) -> str:
         raise ValueError("Hostname cannot be empty")
     if len(host) > 255:
         raise ValueError("Hostname too long (max 255 characters)")
-    if _IPV4_RE.match(host) or _HOSTNAME_RE.match(host):
+    # If it looks like an IP (all digits and dots), validate strictly as IPv4
+    if re.match(r"^[\d.]+$", host):
+        if _IPV4_RE.match(host):
+            return host
+        raise ValueError(
+            f"Invalid hostname: {host!r}. Only letters, digits, dots, and hyphens allowed."
+        )
+    if _HOSTNAME_RE.match(host):
         return host
     raise ValueError(
         f"Invalid hostname: {host!r}. Only letters, digits, dots, and hyphens allowed."
