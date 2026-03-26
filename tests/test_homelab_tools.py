@@ -28,9 +28,12 @@ async def test_system_info_contains_disk():
 
 @pytest.mark.asyncio
 async def test_ping_valid_hostname():
-    # Ping localhost should work (may fail in CI without ping binary)
-    result = await ping_host("127.0.0.1")
-    assert "127.0.0.1" in result or "Error" in result
+    # Ping localhost — may raise FileNotFoundError in CI without ping binary
+    try:
+        result = await ping_host("127.0.0.1")
+        assert "127.0.0.1" in result
+    except FileNotFoundError:
+        pytest.skip("ping binary not available in CI")
 
 
 @pytest.mark.asyncio
