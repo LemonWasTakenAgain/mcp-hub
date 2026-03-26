@@ -262,7 +262,9 @@ upstreams:
     enabled: true
     description: "Prometheus — metrics, alerts, targets"
     command: uvx
-    args: ["mcp-server-prometheus", "--url", "${MH_PROMETHEUS_URL}"]
+    args: ["prometheus-mcp-server"]
+    env:
+      PROMETHEUS_URL: "${MH_PROMETHEUS_URL}"
     prefix: prom
 
   grafana:
@@ -331,8 +333,8 @@ upstreams:
 
   vault:
     transport: stdio
-    enabled: true
-    description: "HashiCorp Vault — secrets management, mounts, policies"
+    enabled: false
+    description: "HashiCorp Vault — secrets management, mounts, policies (package not published)"
     command: npx
     args: ["-y", "@hashicorp/vault-mcp-server"]
     env:
