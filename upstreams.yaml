@@ -257,10 +257,10 @@ upstreams:
 
   grafana:
     transport: stdio
-    enabled: false
-    description: "Grafana — dashboards, datasources, alerts"
+    enabled: true
+    description: "Grafana — dashboards, Prometheus queries, incidents, alerting"
     command: npx
-    args: ["-y", "mcp-grafana"]
+    args: ["-y", "@grafana/mcp-grafana"]
     env:
       GRAFANA_URL: "${MH_GRAFANA_URL}"
       GRAFANA_API_KEY: "${MH_GRAFANA_API_KEY}"
@@ -290,11 +290,98 @@ upstreams:
 
   terraform:
     transport: stdio
-    enabled: false
-    description: "Terraform — state, plan, resources, modules"
+    enabled: true
+    description: "HashiCorp Terraform — registry docs, provider schemas, module search"
     command: npx
-    args: ["-y", "mcp-terraform"]
+    args: ["-y", "@hashicorp/terraform-mcp-server"]
     prefix: tf
+
+  # ── INFRASTRUCTURE ──────────────────────────────────────────
+
+  argocd:
+    transport: stdio
+    enabled: true
+    description: "ArgoCD — application management, sync, rollback, health status"
+    command: npx
+    args: ["-y", "@argoproj-labs/mcp-for-argocd"]
+    env:
+      ARGOCD_BASE_URL: "${MH_ARGOCD_URL}"
+      ARGOCD_AUTH_TOKEN: "${MH_ARGOCD_TOKEN}"
+    prefix: argocd
+
+  loki:
+    transport: stdio
+    enabled: true
+    description: "Grafana Loki — log queries, label browsing, log analysis"
+    command: npx
+    args: ["-y", "@grafana/loki-mcp"]
+    env:
+      LOKI_URL: "${MH_LOKI_URL}"
+    prefix: loki
+
+  vault:
+    transport: stdio
+    enabled: false
+    description: "HashiCorp Vault — secrets management, mounts, policies"
+    command: npx
+    args: ["-y", "@hashicorp/vault-mcp-server"]
+    env:
+      VAULT_ADDR: "${MH_VAULT_URL}"
+      VAULT_TOKEN: "${MH_VAULT_TOKEN}"
+    prefix: vault
+
+  sonarqube:
+    transport: stdio
+    enabled: true
+    description: "SonarQube — code quality, security analysis, issue tracking"
+    command: npx
+    args: ["-y", "@sonarsource/sonarqube-mcp-server"]
+    env:
+      SONARQUBE_URL: "${MH_SONARQUBE_URL}"
+      SONARQUBE_TOKEN: "${MH_SONARQUBE_TOKEN}"
+    prefix: sonar
+
+  netbox:
+    transport: stdio
+    enabled: true
+    description: "NetBox — DCIM, IPAM, circuits, devices, racks, IP addresses"
+    command: npx
+    args: ["-y", "@netboxlabs/netbox-mcp-server"]
+    env:
+      NETBOX_URL: "${MH_NETBOX_URL}"
+      NETBOX_TOKEN: "${MH_NETBOX_TOKEN}"
+    prefix: netbox
+
+  proxmox:
+    transport: stdio
+    enabled: true
+    description: "Proxmox VE — VM/LXC management, cluster status, storage, networks"
+    command: uvx
+    args: ["mcp-proxmox"]
+    env:
+      PROXMOX_URL: "${MH_PROXMOX_URL}"
+      PROXMOX_TOKEN_ID: "${MH_PROXMOX_TOKEN_ID}"
+      PROXMOX_TOKEN_SECRET: "${MH_PROXMOX_TOKEN_SECRET}"
+    prefix: pve
+
+  kubernetes:
+    transport: stdio
+    enabled: true
+    description: "Kubernetes — pods, deployments, services, configmaps, logs"
+    command: npx
+    args: ["-y", "mcp-server-kubernetes"]
+    prefix: k8s
+
+  n8n:
+    transport: stdio
+    enabled: true
+    description: "n8n — workflow automation, execution management, node operations"
+    command: npx
+    args: ["-y", "n8n-mcp-server"]
+    env:
+      N8N_BASE_URL: "${MH_N8N_URL}"
+      N8N_API_KEY: "${MH_N8N_API_KEY}"
+    prefix: n8n
 
   # ── UTILITIES ─────────────────────────────────────────────────
 

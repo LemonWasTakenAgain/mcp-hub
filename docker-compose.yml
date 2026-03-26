@@ -40,6 +40,22 @@ services:
 
       # Filesystem
       MH_FS_ALLOWED_DIRS: "${MH_FS_ALLOWED_DIRS:-/home/lemon/projects,/home/lemon/shared}"
+
+      # Infrastructure upstreams
+      MH_ARGOCD_URL: "${MH_ARGOCD_URL:-https://argocd.steelcanvas.studio}"
+      MH_ARGOCD_TOKEN: "${MH_ARGOCD_TOKEN:-}"
+      MH_LOKI_URL: "${MH_LOKI_URL:-http://loki.steelcanvas.studio}"
+      MH_VAULT_URL: "${MH_VAULT_URL:-http://vault.steelcanvas.studio}"
+      MH_VAULT_TOKEN: "${MH_VAULT_TOKEN:-}"
+      MH_SONARQUBE_URL: "${MH_SONARQUBE_URL:-http://sonarqube.steelcanvas.studio}"
+      MH_SONARQUBE_TOKEN: "${MH_SONARQUBE_TOKEN:-sqa_32310e0ba1866997dea494b628ad256239e4113e}"
+      MH_NETBOX_URL: "${MH_NETBOX_URL:-http://netbox.steelcanvas.studio}"
+      MH_NETBOX_TOKEN: "${MH_NETBOX_TOKEN:-c306b72d-43d2-4df5-a28b-2159dc9284c0}"
+      MH_PROXMOX_URL: "${MH_PROXMOX_URL:-https://192.168.1.10:8006}"
+      MH_PROXMOX_TOKEN_ID: "${MH_PROXMOX_TOKEN_ID:-root@pam!mcp-hub}"
+      MH_PROXMOX_TOKEN_SECRET: "${MH_PROXMOX_TOKEN_SECRET:-cb237242-1f88-457a-b589-c9688c8b6fc8}"
+      MH_N8N_URL: "${MH_N8N_URL:-http://n8n.steelcanvas.studio}"
+      MH_N8N_API_KEY: "${MH_N8N_API_KEY:-660c524a-4501-4361-bcc9-569691746578}"
     volumes:
       - ${HOME}/.git-credentials:/run/secrets/git-credentials:ro
       - ${HOME}/.kube:/home/lemon/.kube:ro

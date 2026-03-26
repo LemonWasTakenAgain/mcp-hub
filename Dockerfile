@@ -30,14 +30,22 @@ RUN chown -R lemon:lemon /app
 
 USER lemon
 
-# Pre-warm npx cache for the default enabled servers (runs once at build time)
+# Pre-warm npx cache for enabled servers (runs once at build time)
 RUN npx -y @modelcontextprotocol/server-github --help 2>/dev/null || true \
     && npx -y @modelcontextprotocol/server-filesystem --help 2>/dev/null || true \
     && npx -y @modelcontextprotocol/server-memory --help 2>/dev/null || true \
     && npx -y @modelcontextprotocol/server-time --help 2>/dev/null || true \
     && npx -y @modelcontextprotocol/server-sequential-thinking --help 2>/dev/null || true \
     && npx -y mcp-server-wikipedia --help 2>/dev/null || true \
-    && npx -y mcp-docker --help 2>/dev/null || true
+    && npx -y mcp-docker --help 2>/dev/null || true \
+    && npx -y @hashicorp/terraform-mcp-server --help 2>/dev/null || true \
+    && npx -y @grafana/mcp-grafana --help 2>/dev/null || true \
+    && npx -y @grafana/loki-mcp --help 2>/dev/null || true \
+    && npx -y @argoproj-labs/mcp-for-argocd --help 2>/dev/null || true \
+    && npx -y mcp-server-kubernetes --help 2>/dev/null || true \
+    && npx -y @sonarsource/sonarqube-mcp-server --help 2>/dev/null || true \
+    && npx -y @netboxlabs/netbox-mcp-server --help 2>/dev/null || true \
+    && npx -y n8n-mcp-server --help 2>/dev/null || true
 
 EXPOSE 8500
 
