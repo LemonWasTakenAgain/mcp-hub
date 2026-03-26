@@ -2,14 +2,27 @@
 
 from __future__ import annotations
 
+import os
+
 from mcp.server.fastmcp import FastMCP
+from mcp.server.sse import TransportSecuritySettings
 
 from mcp_hub.tools import gitlab_tools, homelab_tools, k8s_tools
+
+# Allow the MCP Hub hostname for DNS rebinding protection
+_allowed_hosts = ["localhost", "localhost:8500", "127.0.0.1:8500"]
+_extra_host = os.environ.get("MH_ALLOWED_HOST", "mcp-hub.steelcanvas.studio")
+if _extra_host:
+    _allowed_hosts.append(_extra_host)
 
 mcp = FastMCP(
     "MCP Hub",
     instructions=(
         "Internal homelab MCP server providing GitLab, Kubernetes, and system administration tools."
+    ),
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_allowed_hosts,
     ),
 )
 
