@@ -15,6 +15,7 @@ ENV_PATTERN = re.compile(r"\$\{(\w+)\}")
 
 def resolve_env_vars(value: str) -> str:
     """Replace ${VAR_NAME} placeholders with actual environment variable values."""
+
     def _replace(match: re.Match) -> str:
         var_name = match.group(1)
         resolved = os.environ.get(var_name, "")
@@ -61,6 +62,6 @@ def check_server_ready(server: UpstreamServer) -> tuple[bool, str]:
     # Check for empty args that were supposed to be env vars
     for arg in server.args:
         if not arg.strip():
-            return False, f"Empty argument (likely missing env var)"
+            return False, "Empty argument (likely missing env var)"
 
     return True, "Ready"

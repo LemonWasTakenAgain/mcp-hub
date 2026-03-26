@@ -46,7 +46,10 @@ class ProxyManager:
 
         logger.info(
             "Proxy started: %d/%d servers connected, %d tools proxied (%d failed)",
-            connected, len(enabled), total_tools, failed,
+            connected,
+            len(enabled),
+            total_tools,
+            failed,
         )
 
         # Start health monitor
@@ -86,11 +89,18 @@ class ProxyManager:
             # Register a proxy function on the FastMCP server
             self._register_proxy_tool(proxied_name, desc, input_schema, conn, original_name)
 
-            logger.debug("Registered proxied tool: %s -> %s/%s", proxied_name, conn.server.name, original_name)
+            logger.debug(
+                "Registered proxied tool: %s -> %s/%s",
+                proxied_name,
+                conn.server.name,
+                original_name,
+            )
 
         logger.info(
             "Registered %d tools from %s (prefix: %s)",
-            len(conn.tools), conn.server.name, conn.server.tool_prefix,
+            len(conn.tools),
+            conn.server.name,
+            conn.server.tool_prefix,
         )
 
     def _register_proxy_tool(
@@ -114,7 +124,10 @@ class ProxyManager:
                 duration = (time.monotonic() - start) * 1000
                 logger.info(
                     "Proxied call %s -> %s/%s (%.0fms)",
-                    _name, _conn.server.name, _original, duration,
+                    _name,
+                    _conn.server.name,
+                    _original,
+                    duration,
                 )
                 return result
             except Exception as e:
@@ -216,7 +229,7 @@ class ProxyManager:
         }
 
     @classmethod
-    def from_config(cls, config_path: str | Path, mcp_server: FastMCP) -> "ProxyManager":
+    def from_config(cls, config_path: str | Path, mcp_server: FastMCP) -> ProxyManager:
         """Create a ProxyManager from a YAML config file."""
         registry = UpstreamRegistry.from_yaml(config_path)
         return cls(registry=registry, mcp_server=mcp_server)

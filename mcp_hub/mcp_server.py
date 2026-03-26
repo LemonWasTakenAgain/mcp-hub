@@ -9,14 +9,14 @@ from mcp_hub.tools import gitlab_tools, homelab_tools, k8s_tools
 mcp = FastMCP(
     "MCP Hub",
     instructions=(
-        "Internal homelab MCP server providing GitLab, Kubernetes, "
-        "and system administration tools."
+        "Internal homelab MCP server providing GitLab, Kubernetes, and system administration tools."
     ),
 )
 
 
 # -- Public API wrappers for tool manager access --
 # Avoids direct access to mcp._tool_manager._tools throughout the codebase.
+
 
 def get_registered_tools() -> dict:
     """Get all registered tools from the MCP server."""
@@ -37,7 +37,9 @@ def unregister_tool(name: str) -> None:
     """Remove a tool from the MCP server."""
     mcp._tool_manager._tools.pop(name, None)
 
+
 # -- GitLab Tools --
+
 
 @mcp.tool()
 async def gitlab_list_projects(search: str = "", per_page: int = 20) -> str:
@@ -73,6 +75,7 @@ async def gitlab_create_project(name: str, namespace_id: int | None = None) -> s
 
 # -- Kubernetes Tools --
 
+
 @mcp.tool()
 async def k8s_cluster_status() -> str:
     """Get Kubernetes cluster node status and resources."""
@@ -104,6 +107,7 @@ async def k8s_get_deployments(namespace: str = "") -> str:
 
 
 # -- Homelab Tools --
+
 
 @mcp.tool()
 async def homelab_system_info() -> str:

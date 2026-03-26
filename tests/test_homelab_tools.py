@@ -2,7 +2,13 @@
 
 import pytest
 
-from mcp_hub.tools.homelab_tools import check_service, dns_lookup, http_check, ping_host, system_info
+from mcp_hub.tools.homelab_tools import (
+    check_service,
+    dns_lookup,
+    http_check,
+    ping_host,
+    system_info,
+)
 
 
 @pytest.mark.asyncio

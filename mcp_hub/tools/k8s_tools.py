@@ -40,9 +40,9 @@ async def get_cluster_status() -> str:
         conditions = {c.type: c.status for c in node.status.conditions}
         ready = conditions.get("Ready", "Unknown")
         roles = [
-            l.replace("node-role.kubernetes.io/", "")
-            for l in (node.metadata.labels or {})
-            if l.startswith("node-role.kubernetes.io/")
+            label.replace("node-role.kubernetes.io/", "")
+            for label in (node.metadata.labels or {})
+            if label.startswith("node-role.kubernetes.io/")
         ]
         cap = node.status.capacity
         lines.append(
@@ -78,9 +78,7 @@ async def get_namespace_pods(namespace: str = "default") -> str:
     lines = [f"## Pods in {namespace}\n"]
     for pod in pods.items:
         phase = pod.status.phase
-        restarts = sum(
-            (cs.restart_count for cs in (pod.status.container_statuses or []))
-        )
+        restarts = sum(cs.restart_count for cs in (pod.status.container_statuses or []))
         lines.append(f"- **{pod.metadata.name}** | {phase} | restarts: {restarts}")
     return "\n".join(lines) if len(lines) > 1 else f"No pods found in namespace {namespace}."
 
@@ -102,9 +100,7 @@ async def get_services(namespace: str = "") -> str:
     lines = ["## Services\n"]
     for svc in services.items:
         svc_type = svc.spec.type
-        ports = ", ".join(
-            f"{p.port}/{p.protocol}" for p in (svc.spec.ports or [])
-        )
+        ports = ", ".join(f"{p.port}/{p.protocol}" for p in (svc.spec.ports or []))
         external = ""
         if svc.status.load_balancer and svc.status.load_balancer.ingress:
             ips = [i.ip for i in svc.status.load_balancer.ingress if i.ip]
@@ -135,7 +131,5 @@ async def get_deployments(namespace: str = "") -> str:
     for d in deps.items:
         ready = d.status.ready_replicas or 0
         desired = d.spec.replicas or 0
-        lines.append(
-            f"- **{d.metadata.namespace}/{d.metadata.name}** | {ready}/{desired} ready"
-        )
+        lines.append(f"- **{d.metadata.namespace}/{d.metadata.name}** | {ready}/{desired} ready")
     return "\n".join(lines)

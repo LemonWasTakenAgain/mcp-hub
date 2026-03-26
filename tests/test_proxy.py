@@ -2,8 +2,6 @@
 
 import os
 
-import pytest
-
 from mcp_hub.proxy.env_resolver import resolve_env_vars, resolve_server_env
 from mcp_hub.proxy.registry import TransportType, UpstreamRegistry, UpstreamServer
 
@@ -62,23 +60,27 @@ def test_resolve_server_env():
 
 def test_registry_yaml_roundtrip(tmp_path):
     registry = UpstreamRegistry()
-    registry.add(UpstreamServer(
-        name="test-server",
-        transport=TransportType.STDIO,
-        enabled=True,
-        description="A test server",
-        command="npx",
-        args=["-y", "test-pkg"],
-        env={"KEY": "value"},
-        prefix="test",
-    ))
-    registry.add(UpstreamServer(
-        name="remote",
-        transport=TransportType.SSE,
-        enabled=False,
-        url="http://localhost:9000/sse",
-        prefix="remote",
-    ))
+    registry.add(
+        UpstreamServer(
+            name="test-server",
+            transport=TransportType.STDIO,
+            enabled=True,
+            description="A test server",
+            command="npx",
+            args=["-y", "test-pkg"],
+            env={"KEY": "value"},
+            prefix="test",
+        )
+    )
+    registry.add(
+        UpstreamServer(
+            name="remote",
+            transport=TransportType.SSE,
+            enabled=False,
+            url="http://localhost:9000/sse",
+            prefix="remote",
+        )
+    )
 
     path = tmp_path / "test_upstreams.yaml"
     registry.to_yaml(path)

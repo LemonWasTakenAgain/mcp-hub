@@ -74,9 +74,7 @@ class UpstreamConnection:
             args=self.server.args,
             env=self.server.env if self.server.env else None,
         )
-        stdio_transport = await self._stack.enter_async_context(
-            stdio_client(params)
-        )
+        stdio_transport = await self._stack.enter_async_context(stdio_client(params))
         read_stream, write_stream = stdio_transport
         self.session = await self._stack.enter_async_context(
             ClientSession(read_stream, write_stream)
@@ -116,16 +114,16 @@ class UpstreamConnection:
                     parts.append(str(content))
             return "\n".join(parts)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise TimeoutError(
-                f"Tool {tool_name} on {self.server.name} timed out "
-                f"after {self.server.timeout}s"
+                f"Tool {tool_name} on {self.server.name} timed out after {self.server.timeout}s"
             )
         except Exception as e:
             if self.server.auto_restart:
                 logger.warning(
                     "Tool call failed on %s, will reconnect: %s",
-                    self.server.name, e,
+                    self.server.name,
+                    e,
                 )
                 self.connected = False
             raise

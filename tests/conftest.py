@@ -18,15 +18,15 @@ def event_loop():
 async def client():
     """Async HTTP client for testing FastAPI endpoints."""
     # Patch database to use in-memory approach
-    with patch("mcp_hub.main.engine") as mock_engine, \
-         patch("mcp_hub.main.get_session") as mock_get_session:
-
+    with patch("mcp_hub.main.engine"), patch("mcp_hub.main.get_session") as mock_get_session:
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=MagicMock(
-            all=MagicMock(return_value=[]),
-            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))),
-            scalar=MagicMock(return_value=0),
-        ))
+        mock_session.execute = AsyncMock(
+            return_value=MagicMock(
+                all=MagicMock(return_value=[]),
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))),
+                scalar=MagicMock(return_value=0),
+            )
+        )
 
         async def fake_session():
             yield mock_session
@@ -34,6 +34,7 @@ async def client():
         mock_get_session.return_value = fake_session()
 
         from mcp_hub.main import app
+
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac

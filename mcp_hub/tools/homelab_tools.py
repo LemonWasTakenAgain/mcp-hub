@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import platform
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from mcp_hub.tools._validation import validate_hostname, validate_port, validate_url
 
@@ -23,7 +23,7 @@ async def system_info() -> str:
         f"- **Python**: {platform.python_version()}",
         f"- **Disk**: {disk.used // (1024**3)} GB used / {disk.total // (1024**3)} GB total "
         f"({disk.free // (1024**3)} GB free)",
-        f"- **Time**: {datetime.now(timezone.utc).isoformat()}",
+        f"- **Time**: {datetime.now(UTC).isoformat()}",
     ]
 
     try:
@@ -61,7 +61,12 @@ async def ping_host(host: str) -> str:
         return f"Invalid host: {e}"
 
     proc = await asyncio.create_subprocess_exec(
-        "ping", "-c", "3", "-W", "2", host,
+        "ping",
+        "-c",
+        "3",
+        "-W",
+        "2",
+        host,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -85,15 +90,13 @@ async def check_service(host: str, port: int) -> str:
         return f"Invalid input: {e}"
 
     try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=5.0
-        )
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=5.0)
         writer.close()
         await writer.wait_closed()
         return f"Service at {host}:{port} is **reachable**."
     except (ConnectionRefusedError, OSError) as e:
         return f"Service at {host}:{port} is **unreachable**: {e}"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return f"Service at {host}:{port} **timed out** after 5 seconds."
 
 
@@ -109,7 +112,9 @@ async def dns_lookup(hostname: str) -> str:
         return f"Invalid hostname: {e}"
 
     proc = await asyncio.create_subprocess_exec(
-        "dig", "+short", hostname,
+        "dig",
+        "+short",
+        hostname,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

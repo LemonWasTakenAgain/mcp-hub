@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 import yaml
 
 
-class TransportType(str, Enum):
+class TransportType(StrEnum):
     STDIO = "stdio"
     SSE = "sse"
 
@@ -68,7 +68,7 @@ class UpstreamRegistry:
             self.servers[name].enabled = False
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "UpstreamRegistry":
+    def from_yaml(cls, path: str | Path) -> UpstreamRegistry:
         """Load registry from a YAML config file."""
         registry = cls()
         path = Path(path)

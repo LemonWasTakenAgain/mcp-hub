@@ -1,10 +1,6 @@
 """Test proxy manager and connector."""
 
-import asyncio
-
-import pytest
-
-from mcp_hub.proxy.env_resolver import check_server_ready, has_unresolved_vars, resolve_env_vars
+from mcp_hub.proxy.env_resolver import check_server_ready, has_unresolved_vars
 from mcp_hub.proxy.registry import TransportType, UpstreamRegistry, UpstreamServer
 
 

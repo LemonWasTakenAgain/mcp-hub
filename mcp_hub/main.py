@@ -16,11 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mcp_hub.config import settings
 from mcp_hub.database import engine, get_session
 from mcp_hub.mcp_server import get_registered_tools, get_tool_names, mcp
+from mcp_hub.metrics import TOTAL_TOOLS, UPSTREAM_CONNECTED, UPSTREAM_TOOLS, metrics_endpoint
 from mcp_hub.models import Base, ToolLog
 from mcp_hub.proxy.env_resolver import resolve_registry
 from mcp_hub.proxy.manager import ProxyManager
 from mcp_hub.proxy.registry import UpstreamRegistry
-from mcp_hub.metrics import TOTAL_TOOLS, UPSTREAM_CONNECTED, UPSTREAM_TOOLS, metrics_endpoint
 
 logger = logging.getLogger("mcp_hub")
 
@@ -44,6 +44,7 @@ def _load_registry() -> UpstreamRegistry:
     else:
         logger.info("No upstreams.yaml found, using built-in defaults")
         from mcp_hub.proxy.defaults import get_default_registry
+
         registry = get_default_registry()
 
     resolve_registry(registry)
@@ -75,7 +76,8 @@ async def lifespan(app: FastAPI):
         enabled = registry.get_enabled()
         logger.info(
             "Proxy enabled: %d upstream servers configured, %d enabled",
-            len(registry.servers), len(enabled),
+            len(registry.servers),
+            len(enabled),
         )
         proxy_manager = ProxyManager(registry=registry, mcp_server=mcp)
         await proxy_manager.start()
@@ -108,6 +110,7 @@ app.add_route("/metrics", metrics_endpoint)
 
 # -- Dashboard Routes --
 
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)):
     """Main dashboard page."""
@@ -129,10 +132,10 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         ).all()
 
         recent_logs = (
-            await session.execute(
-                select(ToolLog).order_by(ToolLog.created_at.desc()).limit(20)
-            )
-        ).scalars().all()
+            (await session.execute(select(ToolLog).order_by(ToolLog.created_at.desc()).limit(20)))
+            .scalars()
+            .all()
+        )
 
         total = (await session.execute(select(func.count(ToolLog.id)))).scalar() or 0
     except Exception as e:
@@ -200,11 +203,13 @@ async def list_tools():
     tool_map = proxy_manager.get_tool_map() if proxy_manager else {}
     for name, tool in get_registered_tools().items():
         source = tool_map.get(name, "local")
-        tools.append({
-            "name": name,
-            "description": tool.description,
-            "source": source,
-        })
+        tools.append(
+            {
+                "name": name,
+                "description": tool.description,
+                "source": source,
+            }
+        )
     return {"tools": tools, "total": len(tools)}
 
 

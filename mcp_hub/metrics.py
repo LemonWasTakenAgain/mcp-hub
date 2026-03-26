@@ -4,7 +4,6 @@ from prometheus_client import Counter, Gauge, Histogram, generate_latest
 from starlette.requests import Request
 from starlette.responses import Response
 
-
 # Tool invocation metrics
 TOOL_CALLS = Counter(
     "mcp_hub_tool_calls_total",

@@ -57,14 +57,11 @@ async def get_project_pipelines(project_id: int, per_page: int = 10) -> str:
         project_id: The GitLab project ID
         per_page: Number of pipelines to return (default 10)
     """
-    pipelines = await _gitlab_get(
-        f"/projects/{project_id}/pipelines?per_page={min(per_page, 50)}"
-    )
+    pipelines = await _gitlab_get(f"/projects/{project_id}/pipelines?per_page={min(per_page, 50)}")
     lines = []
     for p in pipelines:
         lines.append(
-            f"- Pipeline #{p['id']} | {p['status']} | ref: {p['ref']} "
-            f"| {p['created_at'][:19]}"
+            f"- Pipeline #{p['id']} | {p['status']} | ref: {p['ref']} | {p['created_at'][:19]}"
         )
     return "\n".join(lines) if lines else "No pipelines found."
 
@@ -76,21 +73,15 @@ async def get_pipeline_jobs(project_id: int, pipeline_id: int) -> str:
         project_id: The GitLab project ID
         pipeline_id: The pipeline ID
     """
-    jobs = await _gitlab_get(
-        f"/projects/{project_id}/pipelines/{pipeline_id}/jobs"
-    )
+    jobs = await _gitlab_get(f"/projects/{project_id}/pipelines/{pipeline_id}/jobs")
     lines = []
     for j in jobs:
         duration = f"{j.get('duration', 0):.1f}s" if j.get("duration") else "n/a"
-        lines.append(
-            f"- {j['name']} | {j['status']} | stage: {j['stage']} | duration: {duration}"
-        )
+        lines.append(f"- {j['name']} | {j['status']} | stage: {j['stage']} | duration: {duration}")
     return "\n".join(lines) if lines else "No jobs found."
 
 
-async def list_merge_requests(
-    project_id: int, state: str = "opened", per_page: int = 10
-) -> str:
+async def list_merge_requests(project_id: int, state: str = "opened", per_page: int = 10) -> str:
     """List merge requests for a GitLab project.
 
     Args:
