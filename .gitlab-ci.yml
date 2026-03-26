@@ -3,6 +3,7 @@ stages:
   - test
   - build
   - deploy
+  - mirror
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
@@ -101,3 +102,14 @@ deploy:k8s:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
       when: manual
+
+# ── Mirror: Push to GitHub backup ─────────────────────────────────────────────
+include:
+  - project: 'user-projects/claude-standards'
+    file: '/ci-templates/github-mirror.yml'
+    ref: main
+
+mirror:github:
+  extends: .github-mirror
+  variables:
+    GITHUB_REPO_URL: "git@github.com:LemonWasTakenAgain/mcp-hub.git"
