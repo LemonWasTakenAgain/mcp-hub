@@ -68,26 +68,25 @@ test:security:
 
 build:docker:
   stage: build
-  image: docker:27
-  services:
-    - name: docker:27-dind
-      command: ["--insecure-registry", "$CI_REGISTRY"]
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_DRIVER: overlay2
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
     IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
   before_script:
     - |
-      # Configure Docker client to use insecure registry
-      mkdir -p /etc/docker
-      echo "{\"insecure-registries\": [\"$CI_REGISTRY\"]}" > /etc/docker/daemon.json
-      # Login using HTTP fallback
-      docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY || true
+      # Configure Kaniko to trust self-signed / default Traefik certs
+      mkdir -p /kaniko/.docker
+      echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf "%s:%s" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
   script:
-    - docker build -t $IMAGE_TAG -t $IMAGE_LATEST .
-    - docker push $IMAGE_TAG
-    - docker push $IMAGE_LATEST
+    - /kaniko/executor
+      --context $CI_PROJECT_DIR
+      --dockerfile $CI_PROJECT_DIR/Dockerfile
+      --destination $IMAGE_TAG
+      --destination $IMAGE_LATEST
+      --skip-tls-verify
+      --cache=true
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_PIPELINE_SOURCE == "web"
