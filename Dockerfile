@@ -2,7 +2,10 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 COPY pyproject.toml .
-RUN pip install --no-cache-dir --prefix=/install .
+COPY mcp_hub/ mcp_hub/
+COPY README.md .
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir --prefix=/install .
 
 FROM python:3.11-slim
 
