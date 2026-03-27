@@ -1,6 +1,7 @@
 stages:
   - lint
   - test
+  - security
   - build
   - deploy
   - mirror
@@ -60,10 +61,15 @@ test:security:
     - pip install bandit safety
     - bandit -r mcp_hub/ -ll
     - safety check --bare 2>/dev/null || true
-  allow_failure: true
+  allow_failure: false
   cache:
     paths:
       - .pip-cache/
+
+# -- Security --
+
+security:gitleaks:
+  extends: .gitleaks-scan
 
 # -- Build --
 
@@ -107,6 +113,9 @@ deploy:k8s:
 
 # ── Mirror: Push to GitHub backup ─────────────────────────────────────────────
 include:
+  - project: 'user-projects/claude-standards'
+    file: '/ci-templates/generic-security.yml'
+    ref: main
   - project: 'user-projects/claude-standards'
     file: '/ci-templates/github-mirror.yml'
     ref: main
