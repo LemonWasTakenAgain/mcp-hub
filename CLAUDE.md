@@ -6,7 +6,7 @@ Use /browse from gstack for all web browsing. Never use mcp__claude-in-chrome__*
 ## Project Context
 MCP Hub — internal MCP gateway that aggregates 30+ upstream MCP servers through a single SSE endpoint.
 - Repo: ~/projects/mcp-hub
-- GitLab: http://gitlab.steelcanvas.studio/infrastructure/mcp-hub (project ID: 10)
+- GitLab: https://gitlab.steelcanvas.studio/infrastructure/mcp-hub (project ID: 10)
 - GitLab Project ID: 10 (needed for MR API calls)
 - GitHub: https://github.com/LemonWasTakenAgain/mcp-hub
 - Dashboard: http://mcp-hub.steelcanvas.studio (port 8500)
@@ -17,6 +17,22 @@ MCP Hub — internal MCP gateway that aggregates 30+ upstream MCP servers throug
 - PostgreSQL + SQLAlchemy async + Alembic migrations
 - Node.js (for npx-based upstream MCP servers)
 - Docker + docker-compose for local dev
+
+## Repository Structure
+
+```
+mcp-hub/
+├── mcp_hub/           # Main Python package
+│   ├── main.py        # FastAPI app entrypoint
+│   ├── mcp_server.py  # MCP tool registration and proxy
+│   ├── _validation.py # Input validation
+│   └── models/        # SQLAlchemy models
+├── upstreams.yaml     # Upstream MCP server definitions (single source of truth)
+├── alembic/           # Database migrations
+├── tests/             # pytest test suite
+├── docker-compose.yml # Local dev environment
+└── pyproject.toml     # Project config and dependencies
+```
 
 ## Commands
 ```bash
