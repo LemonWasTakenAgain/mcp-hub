@@ -103,6 +103,58 @@ class ProxyManager:
             conn.server.tool_prefix,
         )
 
+    @staticmethod
+    def _build_arg_model(input_schema: dict) -> type:
+        """Build a dynamic Pydantic model from a JSON Schema for argument validation.
+
+        This creates an ArgModelBase subclass whose fields match the upstream tool's
+        input schema, so that call_fn_with_arg_validation correctly validates and
+        unpacks arguments instead of requiring a single 'kwargs' field.
+        """
+        from typing import Any as TypingAny
+
+        from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase
+        from pydantic import ConfigDict, Field
+
+        properties = input_schema.get("properties", {})
+        required = set(input_schema.get("required", []))
+
+        field_definitions: dict[str, tuple] = {}
+        for name, prop in properties.items():
+            annotation = TypingAny
+            desc = prop.get("description", "")
+            if name in required:
+                field_definitions[name] = (
+                    annotation,
+                    Field(description=desc),
+                )
+            else:
+                field_definitions[name] = (
+                    annotation,
+                    Field(default=prop.get("default"), description=desc),
+                )
+
+        # If no properties, create a model that accepts anything
+        cfg = ConfigDict(arbitrary_types_allowed=True, extra="allow")
+        if not field_definitions:
+            model = type(
+                "DynamicArgs",
+                (ArgModelBase,),
+                {"model_config": cfg},
+            )
+        else:
+            namespace: dict[str, TypingAny] = {
+                "__annotations__": {},
+                "model_config": cfg,
+            }
+            for name, (annotation, field) in field_definitions.items():
+                namespace["__annotations__"][name] = annotation
+                namespace[name] = field
+            model = type("DynamicArgs", (ArgModelBase,), namespace)
+            model.model_rebuild()
+
+        return model
+
     def _register_proxy_tool(
         self,
         proxied_name: str,
@@ -141,14 +193,20 @@ class ProxyManager:
 
         # Use the low-level tool manager to register with the proper schema
         from mcp.server.fastmcp.tools import Tool as FastMCPTool
-        from mcp.server.fastmcp.utilities.func_metadata import func_metadata
+        from mcp.server.fastmcp.utilities.func_metadata import FuncMetadata
+
+        # Build an arg model from the upstream's input schema so that
+        # call_fn_with_arg_validation validates against the real parameters
+        # instead of the proxy_handler(**kwargs) signature
+        arg_model = self._build_arg_model(input_schema)
+        metadata = FuncMetadata(arg_model=arg_model)
 
         tool = FastMCPTool(
             fn=proxy_handler,
             name=proxied_name,
             description=description,
             parameters=input_schema if input_schema else {"type": "object", "properties": {}},
-            fn_metadata=func_metadata(proxy_handler),
+            fn_metadata=metadata,
             is_async=True,
         )
         register_tool(proxied_name, tool)
