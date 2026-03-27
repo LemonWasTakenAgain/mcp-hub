@@ -410,6 +410,7 @@ upstreams:
       PROXMOX_TOKEN_ID: "${MH_PROXMOX_TOKEN_ID}"
       PROXMOX_TOKEN_SECRET: "${MH_PROXMOX_TOKEN_SECRET}"
     prefix: pve
+    timeout: 45
 
   kubernetes:
     transport: stdio
@@ -417,6 +418,7 @@ upstreams:
     description: "Kubernetes — pods, deployments, services, configmaps, logs"
     command: npx
     args: ["-y", "mcp-server-kubernetes"]
+    timeout: 60
     prefix: k8s
 
   keycloak:

@@ -60,12 +60,21 @@ class ProxyManager:
         conn = UpstreamConnection(server=server)
         self.connections[server.name] = conn
 
+        t0 = time.monotonic()
         try:
             await conn.connect()
             self._register_proxied_tools(conn)
+            elapsed = time.monotonic() - t0
+            logger.info(
+                "Connected to %s in %.1fs (%d tools)",
+                server.name,
+                elapsed,
+                len(conn.tools),
+            )
             return True
         except Exception as e:
-            logger.error("Failed to connect to %s: %s", server.name, e)
+            elapsed = time.monotonic() - t0
+            logger.error("Failed to connect to %s after %.1fs: %s", server.name, elapsed, e)
             return False
 
     def _register_proxied_tools(self, conn: UpstreamConnection) -> None:
@@ -215,7 +224,7 @@ class ProxyManager:
     async def _health_loop(self) -> None:
         """Periodically check upstream connections and reconnect if needed."""
         while True:
-            await asyncio.sleep(60)
+            await asyncio.sleep(15)
             for name, conn in list(self.connections.items()):
                 if not conn.connected and conn.server.auto_restart and conn.server.enabled:
                     lock = self._reconnect_locks.setdefault(name, asyncio.Lock())
