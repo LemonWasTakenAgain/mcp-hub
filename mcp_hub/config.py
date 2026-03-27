@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     # Server
     debug: bool = False
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # nosec B104 — intentional bind-all for container
     port: int = 8500
     mcp_port: int = 8501
 
