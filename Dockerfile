@@ -1,4 +1,5 @@
-FROM python:3.11-slim AS builder
+ARG PYTHON_BASE=python:3.11-slim
+FROM ${PYTHON_BASE} AS builder
 
 WORKDIR /build
 COPY pyproject.toml .
@@ -7,7 +8,7 @@ COPY README.md .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir --prefix=/install .
 
-FROM python:3.11-slim
+FROM ${PYTHON_BASE}
 
 # Install system tools + Node.js (for npx-based MCP servers) + uv/uvx (for Python MCP servers)
 RUN apt-get update && apt-get install -y --no-install-recommends \

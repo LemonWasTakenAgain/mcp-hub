@@ -7,7 +7,7 @@ stages:
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
-  PYTHON_IMAGE: python:3.11-slim
+  PYTHON_IMAGE: $CI_REGISTRY_IMAGE/python:3.11-slim
 
 # -- Lint --
 
@@ -75,6 +75,7 @@ build:docker:
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
     IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+    PYTHON_BASE: $CI_REGISTRY_IMAGE/python:3.11-slim
   before_script:
     - |
       # Configure Kaniko to trust self-signed / default Traefik certs
@@ -84,6 +85,7 @@ build:docker:
     - /kaniko/executor
       --context $CI_PROJECT_DIR
       --dockerfile $CI_PROJECT_DIR/Dockerfile
+      --build-arg PYTHON_BASE=$PYTHON_BASE
       --destination $IMAGE_TAG
       --destination $IMAGE_LATEST
       --skip-tls-verify
