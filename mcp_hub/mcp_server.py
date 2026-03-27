@@ -10,10 +10,12 @@ from mcp.server.sse import TransportSecuritySettings
 from mcp_hub.tools import gitlab_tools, homelab_tools, k8s_tools
 
 # Allow the MCP Hub hostname for DNS rebinding protection
-_allowed_hosts = ["localhost", "localhost:8500", "127.0.0.1:8500"]
-_extra_host = os.environ.get("MH_ALLOWED_HOST", "mcp-hub.steelcanvas.studio")
-if _extra_host:
-    _allowed_hosts.append(_extra_host)
+_allowed_hosts = ["localhost", "localhost:8500", "127.0.0.1:8500", "192.168.1.40:8500"]
+_default_hosts = "mcp-hub.steelcanvas.studio,mcp.steelcanvas.studio"
+for _host in os.environ.get("MH_ALLOWED_HOSTS", _default_hosts).split(","):
+    _host = _host.strip()
+    if _host:
+        _allowed_hosts.append(_host)
 
 mcp = FastMCP(
     "MCP Hub",
