@@ -7,6 +7,7 @@ Use /browse from gstack for all web browsing. Never use mcp__claude-in-chrome__*
 MCP Hub — internal MCP gateway that aggregates 30+ upstream MCP servers through a single SSE endpoint.
 - Repo: ~/projects/mcp-hub
 - GitLab: http://gitlab.steelcanvas.studio/infrastructure/mcp-hub (project ID: 10)
+- GitLab Project ID: 10 (needed for MR API calls)
 - GitHub: https://github.com/LemonWasTakenAgain/mcp-hub
 - Dashboard: http://mcp-hub.steelcanvas.studio (port 8500)
 - MCP SSE: http://mcp-hub.steelcanvas.studio/mcp/sse
