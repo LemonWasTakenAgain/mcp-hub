@@ -41,6 +41,12 @@ docker compose up -d
 - Upstream config: single source of truth is `upstreams.yaml`
 - Proxy tool naming: `{prefix}__{original_tool_name}` (double underscore)
 
-## Commit Style
-- No Co-Authored-By trailers
-- Descriptive commit messages with what and why
+## CI Pipeline
+
+Stages: lint → test → security → build → deploy → mirror
+- **lint**: ruff check + format, mypy
+- **test**: pytest with coverage, bandit + safety
+- **security**: gitleaks secret scanning
+- **build**: Docker image via Kaniko (main only)
+- **deploy**: kubectl rollout (main, manual)
+- **mirror**: Push to GitHub backup
