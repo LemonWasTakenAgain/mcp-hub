@@ -249,7 +249,7 @@ upstreams:
 
   ollama:
     transport: stdio
-    enabled: true
+    enabled: false  # Disabled — CPU-intensive, enable only when needed for LLM inference
     description: "Ollama — local LLM inference, embeddings generation (CPU)"
     command: npx
     args: ["-y", "ollama-mcp"]
