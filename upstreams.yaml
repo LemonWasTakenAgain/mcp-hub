@@ -76,7 +76,7 @@ upstreams:
 
   docker:
     transport: stdio
-    enabled: true
+    enabled: false  # Requires docker.sock — not available in K8s pods
     description: "Docker — containers, images, volumes, networks"
     command: npx
     args: ["-y", "mcp-server-docker"]
@@ -371,7 +371,8 @@ upstreams:
     command: uvx
     args: ["mcp-proxmox"]
     env:
-      PROXMOX_URL: "${MH_PROXMOX_URL}"
+      PROXMOX_HOST: "${MH_PROXMOX_HOST}"
+      PROXMOX_VERIFY_SSL: "false"
       PROXMOX_TOKEN_ID: "${MH_PROXMOX_TOKEN_ID}"
       PROXMOX_TOKEN_SECRET: "${MH_PROXMOX_TOKEN_SECRET}"
     prefix: pve
