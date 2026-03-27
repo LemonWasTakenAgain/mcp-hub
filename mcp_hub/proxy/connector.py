@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 
@@ -28,6 +29,8 @@ class UpstreamConnection:
     error: str | None = None
     _stack: AsyncExitStack | None = None
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _consecutive_failures: int = 0
+    _circuit_open_until: float = 0.0
 
     async def connect(self) -> None:
         """Establish connection to the upstream server and discover tools."""
@@ -98,6 +101,9 @@ class UpstreamConnection:
         if not self.connected or not self.session:
             raise ConnectionError(f"Not connected to {self.server.name}")
 
+        if time.monotonic() < self._circuit_open_until:
+            raise ConnectionError(f"Circuit open for {self.server.name}, retry after cooldown")
+
         try:
             result = await asyncio.wait_for(
                 self.session.call_tool(tool_name, arguments or {}),
@@ -112,6 +118,7 @@ class UpstreamConnection:
                     parts.append(f"[binary data: {content.mimeType}]")
                 else:
                     parts.append(str(content))
+            self._consecutive_failures = 0
             return "\n".join(parts)
 
         except TimeoutError:
@@ -119,6 +126,14 @@ class UpstreamConnection:
                 f"Tool {tool_name} on {self.server.name} timed out after {self.server.timeout}s"
             )
         except Exception as e:
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= 3:
+                self._circuit_open_until = time.monotonic() + 60.0
+                logger.warning(
+                    "Circuit opened for %s after %d consecutive failures — skipping for 60s",
+                    self.server.name,
+                    self._consecutive_failures,
+                )
             if self.server.auto_restart:
                 logger.warning(
                     "Tool call failed on %s, will reconnect: %s",
