@@ -48,7 +48,7 @@ test:unit:
     MH_DATABASE_URL: postgresql+asyncpg://mcphub:mcphub@postgres:5432/mcphub_test
   script:
     - pip install .[dev]
-    - pytest --cov=mcp_hub --cov-report=term-missing -v
+    - pytest --cov=mcp_hub --cov-report=term-missing -v --cov-fail-under=30
   coverage: '/TOTAL.*\s+(\d+%)$/'
   cache:
     paths:
