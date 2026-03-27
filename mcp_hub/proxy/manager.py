@@ -172,7 +172,8 @@ class ProxyManager:
         async def proxy_handler(**kwargs) -> str:
             start = time.monotonic()
             try:
-                result = await _conn.call_tool(_original, kwargs if kwargs else None)
+                filtered = {k: v for k, v in kwargs.items() if v is not None} if kwargs else None
+                result = await _conn.call_tool(_original, filtered if filtered else None)
                 duration = (time.monotonic() - start) * 1000
                 logger.info(
                     "Proxied call %s -> %s/%s (%.0fms)",
