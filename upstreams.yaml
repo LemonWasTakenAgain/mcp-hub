@@ -119,6 +119,17 @@ upstreams:
       QDRANT_API_KEY: "${MH_QDRANT_API_KEY}"
     prefix: qdrant
 
+  meilisearch:
+    transport: stdio
+    enabled: false
+    description: "Meilisearch — full-text search, index management, document CRUD"
+    command: uvx
+    args: ["meilisearch-mcp"]
+    env:
+      MEILI_HTTP_ADDR: "${MH_MEILI_URL}"
+      MEILI_MASTER_KEY: "${MH_MEILI_KEY}"
+    prefix: meili
+
   # ── KNOWLEDGE & RESEARCH ──────────────────────────────────────
 
   arxiv:
@@ -146,6 +157,17 @@ upstreams:
     env:
       WOLFRAM_APP_ID: "${MH_WOLFRAM_APP_ID}"
     prefix: wolfram
+
+  outline:
+    transport: stdio
+    enabled: false
+    description: "Outline — wiki search, document management, collections"
+    command: npx
+    args: ["-y", "@mscrivo/outline-mcp-server"]
+    env:
+      OUTLINE_INSTANCE_URL: "${MH_OUTLINE_URL}"
+      OUTLINE_API_KEY: "${MH_OUTLINE_API_KEY}"
+    prefix: outline
 
   # ── FILES & STORAGE ───────────────────────────────────────────
 
@@ -288,6 +310,18 @@ upstreams:
       SENTRY_AUTH_TOKEN: "${MH_SENTRY_TOKEN}"
     prefix: sentry
 
+  uptime-kuma:
+    transport: stdio
+    enabled: false
+    description: "Uptime Kuma — monitor status, heartbeats, uptime metrics"
+    command: npx
+    args: ["-y", "@davidfuchs/mcp-uptime-kuma"]
+    env:
+      UPTIME_KUMA_URL: "${MH_UPTIME_KUMA_URL}"
+      UPTIME_KUMA_USERNAME: "${MH_UPTIME_KUMA_USERNAME}"
+      UPTIME_KUMA_PASSWORD: "${MH_UPTIME_KUMA_PASSWORD}"
+    prefix: uptimekuma
+
   # ── CLOUD & INFRA ─────────────────────────────────────────────
 
   cloudflare:
@@ -324,9 +358,9 @@ upstreams:
   loki:
     transport: stdio
     enabled: false
-    description: "Grafana Loki — log queries, label browsing, log analysis (requires Go build)"
-    command: npx
-    args: ["-y", "grafana-loki-mcp"]
+    description: "Grafana Loki — log queries, label browsing (note: mostly redundant with grafana upstream)"
+    command: uvx
+    args: ["grafana-loki-mcp"]
     env:
       LOKI_URL: "${MH_LOKI_URL}"
     prefix: loki
@@ -334,9 +368,9 @@ upstreams:
   vault:
     transport: stdio
     enabled: false
-    description: "HashiCorp Vault — secrets management, mounts, policies (package not published)"
+    description: "HashiCorp Vault — secrets management, mounts, policies"
     command: npx
-    args: ["-y", "@hashicorp/vault-mcp-server"]
+    args: ["-y", "@fredko/vault-mcp-server"]
     env:
       VAULT_ADDR: "${MH_VAULT_URL}"
       VAULT_TOKEN: "${MH_VAULT_TOKEN}"
@@ -345,9 +379,9 @@ upstreams:
   sonarqube:
     transport: stdio
     enabled: false
-    description: "SonarQube — code quality, security analysis (package not yet published)"
+    description: "SonarQube — code quality analysis, security hotspots, quality gates (official)"
     command: npx
-    args: ["-y", "oe-sonar-mcp"]
+    args: ["-y", "sonarqube-mcp-server"]
     env:
       SONARQUBE_URL: "${MH_SONARQUBE_URL}"
       SONARQUBE_TOKEN: "${MH_SONARQUBE_TOKEN}"
@@ -356,9 +390,9 @@ upstreams:
   netbox:
     transport: stdio
     enabled: false
-    description: "NetBox — DCIM, IPAM, circuits, devices, racks (package not yet published)"
-    command: npx
-    args: ["-y", "@netboxlabs/netbox-mcp-server"]
+    description: "NetBox — DCIM, IPAM, circuits, devices, racks"
+    command: uvx
+    args: ["netbox-mcp-server"]
     env:
       NETBOX_URL: "${MH_NETBOX_URL}"
       NETBOX_TOKEN: "${MH_NETBOX_TOKEN}"
@@ -384,6 +418,30 @@ upstreams:
     command: npx
     args: ["-y", "mcp-server-kubernetes"]
     prefix: k8s
+
+  keycloak:
+    transport: stdio
+    enabled: false
+    description: "Keycloak — user management, realm config, role assignments, SSO admin"
+    command: npx
+    args: ["-y", "keycloak-mcp"]
+    env:
+      KEYCLOAK_URL: "${MH_KEYCLOAK_URL}"
+      KEYCLOAK_REALM: "${MH_KEYCLOAK_REALM}"
+      KEYCLOAK_CLIENT_ID: "${MH_KEYCLOAK_CLIENT_ID}"
+      KEYCLOAK_CLIENT_SECRET: "${MH_KEYCLOAK_CLIENT_SECRET}"
+    prefix: keycloak
+
+  home-assistant:
+    transport: stdio
+    enabled: false
+    description: "Home Assistant — device control, automations, entity states, history"
+    command: npx
+    args: ["-y", "home-assistant-mcp"]
+    env:
+      HA_URL: "${MH_HA_URL}"
+      HA_TOKEN: "${MH_HA_TOKEN}"
+    prefix: ha
 
   n8n:
     transport: stdio
