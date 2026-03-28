@@ -3,10 +3,10 @@ FROM ${PYTHON_BASE} AS builder
 
 WORKDIR /build
 COPY pyproject.toml .
-COPY mcp_hub/ mcp_hub/
-COPY README.md .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir --prefix=/install .
+COPY mcp_hub/ mcp_hub/
+COPY README.md .
 
 FROM ${PYTHON_BASE}
 
