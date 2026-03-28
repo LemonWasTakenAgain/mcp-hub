@@ -2,7 +2,8 @@
 
 ## Project Context
 MCP Hub — internal MCP gateway that aggregates 30+ upstream MCP servers through a single SSE endpoint.
-- Repo: ~/projects/mcp-hub
+- GitLab Project ID: 10
+- Repo: ~/projects/homelab/mcp-hub
 - GitLab: https://gitlab.steelcanvas.studio/infrastructure/mcp-hub
 - GitHub: https://github.com/LemonWasTakenAgain/mcp-hub
 - Dashboard: http://mcp-hub.steelcanvas.studio (port 8500)
