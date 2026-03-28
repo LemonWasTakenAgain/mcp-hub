@@ -54,12 +54,6 @@ RUN npx -y @modelcontextprotocol/server-github --help 2>/dev/null || true \
     && npx -y n8n-mcp-server --help 2>/dev/null || true \
     && uvx mcp-proxmox --help 2>/dev/null || true
 
-# Install sandbox-mcp-server from private GitLab repo via deploy token
-ARG SANDBOX_DEPLOY_TOKEN=""
-RUN pip install --no-cache-dir \
-        "sandbox-mcp-server @ git+https://gitlab+deploy-token-1:${SANDBOX_DEPLOY_TOKEN}@gitlab.steelcanvas.studio/user-projects/sandbox-mcp-server.git@main" \
-    || echo "WARN: sandbox-mcp-server install failed (no token or repo unreachable)"
-
 EXPOSE 8500
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
