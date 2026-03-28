@@ -28,7 +28,7 @@ Your AI connects to **one endpoint** and gets access to:
 ## Quick Start
 
 ```bash
-cd ~/projects/mcp-hub
+cd ~/projects/homelab/mcp-hub
 export MH_GITLAB_TOKEN=<your-gitlab-pat>
 export MH_GITHUB_TOKEN=<your-github-token>
 docker compose up -d
