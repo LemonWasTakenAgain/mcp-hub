@@ -133,6 +133,7 @@ build:docker:
       --context $CI_PROJECT_DIR
       --dockerfile $CI_PROJECT_DIR/Dockerfile
       --build-arg PYTHON_BASE=$PYTHON_BASE
+      --build-arg GITLAB_TOKEN=$CI_JOB_TOKEN
       --destination $IMAGE_TAG
       --destination $IMAGE_LATEST
       --skip-tls-verify
