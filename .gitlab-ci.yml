@@ -20,6 +20,7 @@ lint:ruff:
     - ruff check .
     - ruff format --check .
   cache:
+    key: "${CI_JOB_NAME}-pip"
     paths:
       - .pip-cache/
 
@@ -31,6 +32,7 @@ lint:mypy:
     - mypy mcp_hub/
   allow_failure: true
   cache:
+    key: "${CI_JOB_NAME}-pip"
     paths:
       - .pip-cache/
 
@@ -38,6 +40,7 @@ lint:mypy:
 
 test:unit:
   stage: test
+  needs: []
   image: $PYTHON_IMAGE
   services:
     - postgres:16-alpine
@@ -51,11 +54,13 @@ test:unit:
     - pytest --cov=mcp_hub --cov-report=term-missing -v --cov-fail-under=30
   coverage: '/TOTAL.*\s+(\d+%)$/'
   cache:
+    key: "${CI_JOB_NAME}-pip"
     paths:
       - .pip-cache/
 
 test:security:
   stage: test
+  needs: []
   image: $PYTHON_IMAGE
   script:
     - pip install bandit safety
@@ -63,6 +68,7 @@ test:security:
     - safety check --bare 2>/dev/null || true
   allow_failure: false
   cache:
+    key: "${CI_JOB_NAME}-pip"
     paths:
       - .pip-cache/
 
