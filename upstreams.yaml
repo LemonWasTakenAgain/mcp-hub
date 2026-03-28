@@ -413,17 +413,10 @@ upstreams:
     timeout: 45
 
   sandbox:
-    transport: stdio
+    transport: sse
     enabled: true
     description: "AI sandbox VM — screenshots, mouse/keyboard, OCR, shell, multi-agent reservation"
-    command: sandbox-mcp-server
-    args: []
-    env:
-      PROXMOX_HOST: "${MH_PROXMOX_HOST}"
-      PROXMOX_TOKEN_ID: "${MH_PROXMOX_TOKEN_ID}"
-      PROXMOX_TOKEN_SECRET: "${MH_PROXMOX_TOKEN_SECRET}"
-      SANDBOX_VNC_PASSWORD: "${MH_SANDBOX_VNC_PASSWORD}"
-      SANDBOX_DB_URL: "${MH_DATABASE_URL}"
+    url: "http://sandbox-mcp-server:8600/sse"
     prefix: sandbox
     timeout: 60
 
