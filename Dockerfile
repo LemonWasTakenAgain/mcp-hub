@@ -33,6 +33,7 @@ WORKDIR /app
 RUN chown -R lemon:lemon /app
 
 USER lemon
+ENV PATH="/home/lemon/.local/bin:${PATH}"
 
 # Pre-warm npx/uvx cache for enabled servers (runs once at build time)
 RUN npx -y @modelcontextprotocol/server-github --help 2>/dev/null || true \
