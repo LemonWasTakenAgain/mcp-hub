@@ -412,6 +412,21 @@ upstreams:
     prefix: pve
     timeout: 45
 
+  sandbox:
+    transport: stdio
+    enabled: true
+    description: "AI sandbox VM — screenshots, mouse/keyboard, OCR, shell, multi-agent reservation"
+    command: sandbox-mcp-server
+    args: []
+    env:
+      PROXMOX_HOST: "${MH_PROXMOX_HOST}"
+      PROXMOX_TOKEN_ID: "${MH_PROXMOX_TOKEN_ID}"
+      PROXMOX_TOKEN_SECRET: "${MH_PROXMOX_TOKEN_SECRET}"
+      SANDBOX_VNC_PASSWORD: "${MH_SANDBOX_VNC_PASSWORD}"
+      SANDBOX_DB_URL: "${MH_DATABASE_URL}"
+    prefix: sandbox
+    timeout: 60
+
   kubernetes:
     transport: stdio
     enabled: true
