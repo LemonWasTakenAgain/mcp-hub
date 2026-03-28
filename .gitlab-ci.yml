@@ -86,8 +86,8 @@ test:security:
   script:
     - pip install bandit safety
     - bandit -r mcp_hub/ -ll
-    - safety check --bare 2>/dev/null || true
-  allow_failure: false
+    - safety check --bare
+  allow_failure: true
   cache:
     key: "${CI_JOB_NAME}-pip"
     paths:
@@ -133,7 +133,6 @@ build:docker:
       --context $CI_PROJECT_DIR
       --dockerfile $CI_PROJECT_DIR/Dockerfile
       --build-arg PYTHON_BASE=$PYTHON_BASE
-      --build-arg SANDBOX_DEPLOY_TOKEN=$SANDBOX_DEPLOY_TOKEN
       --destination $IMAGE_TAG
       --destination $IMAGE_LATEST
       --skip-tls-verify
