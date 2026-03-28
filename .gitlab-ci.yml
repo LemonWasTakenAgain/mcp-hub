@@ -22,6 +22,13 @@ lint:ruff:
   cache:
     paths:
       - .pip-cache/
+  rules:
+    - changes:
+        - "*.md"
+        - "docs/**"
+        - "LICENSE"
+      when: never
+    - when: on_success
 
 lint:mypy:
   stage: lint
@@ -33,6 +40,13 @@ lint:mypy:
   cache:
     paths:
       - .pip-cache/
+  rules:
+    - changes:
+        - "*.md"
+        - "docs/**"
+        - "LICENSE"
+      when: never
+    - when: on_success
 
 # -- Test --
 
@@ -53,6 +67,13 @@ test:unit:
   cache:
     paths:
       - .pip-cache/
+  rules:
+    - changes:
+        - "*.md"
+        - "docs/**"
+        - "LICENSE"
+      when: never
+    - when: on_success
 
 test:security:
   stage: test
@@ -65,11 +86,25 @@ test:security:
   cache:
     paths:
       - .pip-cache/
+  rules:
+    - changes:
+        - "*.md"
+        - "docs/**"
+        - "LICENSE"
+      when: never
+    - when: on_success
 
 # -- Security --
 
 security:gitleaks:
   extends: .gitleaks-scan
+  rules:
+    - changes:
+        - "*.md"
+        - "docs/**"
+        - "LICENSE"
+      when: never
+    - when: on_success
 
 # -- Build --
 
