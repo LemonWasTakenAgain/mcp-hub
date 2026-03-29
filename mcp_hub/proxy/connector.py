@@ -37,6 +37,14 @@ class UpstreamConnection:
         async with self._lock:
             if self.connected:
                 return
+            # Clean up any leftover stack from a broken connection
+            if self._stack is not None:
+                try:
+                    await self._stack.aclose()
+                except Exception:
+                    pass
+                self._stack = None
+                self.session = None
             try:
                 self._stack = AsyncExitStack()
                 await self._stack.__aenter__()
