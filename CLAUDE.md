@@ -36,15 +36,14 @@ mcp-hub/
   mcp_hub/           # Main Python package
     main.py          # FastAPI app entrypoint
     mcp_server.py    # MCP tool registration and proxy
-    _validation.py   # Input validation
-    config.py        # Configuration
+    config.py        # Settings via pydantic-settings (MH_ prefix)
     database.py      # DB session and engine
     metrics.py       # Metrics collection
     models/          # SQLAlchemy models
-    dashboard/       # Web dashboard
+    dashboard/       # Web dashboard routes and views
     proxy/           # Proxy logic
-    tools/           # Tool definitions
-    migrations/      # Per-package migrations
+    tools/           # Tool definitions (includes _validation.py)
+    migrations/      # Per-package Alembic migrations
   migrations/        # Alembic migrations (repo root)
   tests/             # pytest test suite
   static/            # Static assets
