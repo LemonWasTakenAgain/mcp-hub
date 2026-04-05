@@ -17,4 +17,4 @@ if curl -sf http://verdaccio.applications.svc.cluster.local:4873/-/ping >/dev/nu
     echo "Using Verdaccio npm cache"
 fi
 
-exec uvicorn mcp_hub.main:app --host "${MH_HOST:-0.0.0.0}" --port "${MH_PORT:-8500}"
+exec uvicorn mcp_hub.main:app --host "${MH_HOST:-0.0.0.0}" --port "${MH_PORT:-8500}" --timeout-graceful-shutdown 30

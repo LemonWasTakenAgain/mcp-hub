@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select, text
@@ -167,9 +167,15 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     )
 
 
+@app.get("/healthz")
+async def healthz():
+    """Liveness probe — returns 200 if the process is alive."""
+    return {"status": "alive"}
+
+
 @app.get("/health")
 async def health(session: AsyncSession = Depends(get_session)):
-    """Health check endpoint."""
+    """Readiness probe — returns 503 if DB is down or majority of upstreams disconnected."""
     try:
         await session.execute(text("SELECT 1"))
         db_ok = True
@@ -177,23 +183,32 @@ async def health(session: AsyncSession = Depends(get_session)):
         db_ok = False
 
     tool_names = get_tool_names()
+    connected = 0
+    total = 0
+
+    if proxy_manager:
+        ps = proxy_manager.get_status()
+        connected = ps["connected"]
+        total = ps["total_servers"]
+
+    healthy = db_ok and (connected >= total / 2 if total > 0 else True)
+
     result = {
-        "status": "healthy" if db_ok else "degraded",
+        "status": "healthy" if healthy else "degraded",
         "database": "connected" if db_ok else "disconnected",
         "mcp_tools": len(tool_names),
         "version": "0.2.0",
     }
 
     if proxy_manager:
-        ps = proxy_manager.get_status()
         result["proxy"] = {
             "enabled": True,
-            "servers_connected": ps["connected"],
-            "servers_total": ps["total_servers"],
-            "proxied_tools": ps["total_proxied_tools"],
+            "servers_connected": connected,
+            "servers_total": total,
+            "proxied_tools": proxy_manager.get_status()["total_proxied_tools"],
         }
 
-    return result
+    return JSONResponse(content=result, status_code=200 if healthy else 503)
 
 
 @app.get("/api/tools")

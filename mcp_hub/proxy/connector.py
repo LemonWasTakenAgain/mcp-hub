@@ -135,12 +135,13 @@ class UpstreamConnection:
             )
         except Exception as e:
             self._consecutive_failures += 1
-            if self._consecutive_failures >= 3:
-                self._circuit_open_until = time.monotonic() + 60.0
+            if self._consecutive_failures >= self.server.circuit_breaker_threshold:
+                self._circuit_open_until = time.monotonic() + self.server.circuit_breaker_cooldown
                 logger.warning(
-                    "Circuit opened for %s after %d consecutive failures — skipping for 60s",
+                    "Circuit opened for %s after %d consecutive failures — skipping for %.0fs",
                     self.server.name,
                     self._consecutive_failures,
+                    self.server.circuit_breaker_cooldown,
                 )
             if self.server.auto_restart:
                 logger.warning(
