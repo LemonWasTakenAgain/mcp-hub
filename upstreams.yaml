@@ -426,6 +426,9 @@ upstreams:
     description: "Kubernetes — pods, deployments, services, configmaps, logs"
     command: npx
     args: ["-y", "mcp-server-kubernetes"]
+    env:
+      KUBERNETES_SERVICE_HOST: "${KUBERNETES_SERVICE_HOST}"
+      KUBERNETES_SERVICE_PORT: "${KUBERNETES_SERVICE_PORT}"
     timeout: 60
     prefix: k8s
 
