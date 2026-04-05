@@ -37,6 +37,8 @@ class UpstreamServer:
     timeout: float = 30.0
     retries: int = 2
     auto_restart: bool = True
+    circuit_breaker_threshold: int = 3
+    circuit_breaker_cooldown: float = 60.0
 
     def __post_init__(self):
         if not self.prefix:
@@ -93,6 +95,8 @@ class UpstreamRegistry:
                 timeout=cfg.get("timeout", 30.0),
                 retries=cfg.get("retries", 2),
                 auto_restart=cfg.get("auto_restart", True),
+                circuit_breaker_threshold=cfg.get("circuit_breaker_threshold", 3),
+                circuit_breaker_cooldown=cfg.get("circuit_breaker_cooldown", 60.0),
             )
             registry.add(server)
 

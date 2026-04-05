@@ -14,12 +14,22 @@ async def client():
 
 
 @pytest.mark.asyncio
+async def test_healthz_endpoint(client):
+    resp = await client.get("/healthz")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "alive"
+
+
+@pytest.mark.asyncio
 async def test_health_endpoint(client):
     resp = await client.get("/health")
-    assert resp.status_code == 200
+    # May be 200 (healthy) or 503 (degraded) depending on DB/proxy state
+    assert resp.status_code in (200, 503)
     data = resp.json()
     assert data["version"] == "0.2.0"
     assert "mcp_tools" in data
+    assert data["status"] in ("healthy", "degraded")
 
 
 @pytest.mark.asyncio
