@@ -1,6 +1,6 @@
 """Test ticket queue tools with mocked database sessions."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,7 +18,7 @@ from mcp_hub.tools.ticket_tools import (
 
 def _make_ticket(**overrides) -> Ticket:
     """Create a Ticket instance with sensible defaults."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     defaults = {
         "id": 1,
         "title": "Fix DNS resolution",
@@ -150,7 +150,7 @@ async def test_get_ticket_found():
     comment = MagicMock(spec=TicketComment)
     comment.role = "Infra Worker"
     comment.content = "Working on it"
-    comment.created_at = datetime.now(timezone.utc)
+    comment.created_at = datetime.now(UTC)
 
     ticket = _make_ticket(
         id=5,
