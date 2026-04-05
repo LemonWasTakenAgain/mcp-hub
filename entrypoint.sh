@@ -9,7 +9,7 @@ fi
 
 # Run database migrations
 echo "Running database migrations..."
-python -m alembic upgrade head 2>/dev/null || echo "Migration skipped (DB may not be ready yet, tables will be auto-created)"
+timeout 30 python -m alembic upgrade head 2>/dev/null || echo "Migration skipped (DB may not be ready or no migrations, tables will be auto-created)"
 
 # Use Verdaccio npm cache if available (keep npmjs as fallback)
 if curl -sf http://verdaccio.applications.svc.cluster.local:4873/-/ping >/dev/null 2>&1; then
