@@ -7,7 +7,7 @@ import os
 from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import TransportSecuritySettings
 
-from mcp_hub.tools import gitlab_tools, homelab_tools, k8s_tools
+from mcp_hub.tools import gitlab_tools, homelab_tools, k8s_tools, ticket_tools
 
 # Allow the MCP Hub hostname for DNS rebinding protection
 _allowed_hosts = ["localhost", "localhost:8500", "127.0.0.1:8500", "192.168.1.40:8500"]
@@ -152,3 +152,48 @@ async def homelab_dns_lookup(hostname: str) -> str:
 async def homelab_http_check(url: str) -> str:
     """Check an HTTP endpoint's status and response time."""
     return await homelab_tools.http_check(url)
+
+
+# -- Ticket Queue Tools --
+
+
+@mcp.tool()
+async def ticket_create(
+    title: str, description: str, from_role: str, to_role: str, priority: str = "medium"
+) -> str:
+    """Create a cross-agent ticket. Use when you need work done outside your scope."""
+    return await ticket_tools.create_ticket(title, description, from_role, to_role, priority)
+
+
+@mcp.tool()
+async def ticket_list(
+    status: str = "", from_role: str = "", to_role: str = "", limit: int = 20
+) -> str:
+    """List tickets with optional filters by status, sender role, or target role."""
+    return await ticket_tools.list_tickets(status, from_role, to_role, limit)
+
+
+@mcp.tool()
+async def ticket_get(ticket_id: int) -> str:
+    """Get full ticket details including comments, triage info, and result."""
+    return await ticket_tools.get_ticket(ticket_id)
+
+
+@mcp.tool()
+async def ticket_update(
+    ticket_id: int, status: str = "", result: str = "", denial_reason: str = ""
+) -> str:
+    """Update a ticket's status, result, or denial reason."""
+    return await ticket_tools.update_ticket(ticket_id, status, result, denial_reason)
+
+
+@mcp.tool()
+async def ticket_comment(ticket_id: int, role: str, content: str) -> str:
+    """Add a comment to a ticket for progress notes or questions."""
+    return await ticket_tools.add_comment(ticket_id, role, content)
+
+
+@mcp.tool()
+async def ticket_denied(from_role: str = "", limit: int = 10) -> str:
+    """List denied tickets with reasons, optionally filtered by creator role."""
+    return await ticket_tools.list_denied(from_role, limit)

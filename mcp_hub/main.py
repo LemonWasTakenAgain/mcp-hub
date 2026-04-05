@@ -17,7 +17,8 @@ from mcp_hub.config import settings
 from mcp_hub.database import engine, get_session
 from mcp_hub.mcp_server import get_registered_tools, get_tool_names, mcp
 from mcp_hub.metrics import TOTAL_TOOLS, UPSTREAM_CONNECTED, UPSTREAM_TOOLS, metrics_endpoint
-from mcp_hub.models import Base, ToolLog
+from mcp_hub.models import Base, Ticket, ToolLog
+from mcp_hub.models.ticket import VALID_STATUSES, VALID_TRANSITIONS
 from mcp_hub.proxy.env_resolver import resolve_registry
 from mcp_hub.proxy.manager import ProxyManager
 from mcp_hub.proxy.registry import UpstreamRegistry
@@ -251,6 +252,115 @@ async def proxy_tool_map():
     if not proxy_manager:
         return {"enabled": False}
     return {"tool_map": proxy_manager.get_tool_map()}
+
+
+# -- Ticket Queue API (for dispatcher) --
+
+
+@app.get("/api/tickets")
+async def api_list_tickets(
+    status: str = "",
+    from_role: str = "",
+    to_role: str = "",
+    limit: int = 20,
+    session: AsyncSession = Depends(get_session),
+):
+    """List tickets with optional filters. Used by the ticket dispatcher."""
+    query = select(Ticket).order_by(Ticket.priority.asc(), Ticket.created_at.desc())
+    if status:
+        query = query.where(Ticket.status == status)
+    if from_role:
+        query = query.where(Ticket.from_role == from_role)
+    if to_role:
+        query = query.where(Ticket.to_role == to_role)
+    query = query.limit(min(limit, 100))
+
+    tickets = (await session.execute(query)).scalars().all()
+    return {
+        "tickets": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "description": t.description,
+                "from_role": t.from_role,
+                "to_role": t.to_role,
+                "priority": t.priority,
+                "status": t.status,
+                "model_assigned": t.model_assigned,
+                "triage_difficulty": t.triage_difficulty,
+                "triage_reasoning": t.triage_reasoning,
+                "denial_reason": t.denial_reason,
+                "result": t.result,
+                "created_at": t.created_at.isoformat(),
+                "updated_at": t.updated_at.isoformat(),
+            }
+            for t in tickets
+        ],
+        "total": len(tickets),
+    }
+
+
+@app.get("/api/tickets/{ticket_id}")
+async def api_get_ticket(ticket_id: int, session: AsyncSession = Depends(get_session)):
+    """Get a single ticket by ID."""
+    ticket = await session.get(Ticket, ticket_id)
+    if not ticket:
+        return {"error": f"Ticket #{ticket_id} not found"}
+    return {
+        "id": ticket.id,
+        "title": ticket.title,
+        "description": ticket.description,
+        "from_role": ticket.from_role,
+        "to_role": ticket.to_role,
+        "priority": ticket.priority,
+        "status": ticket.status,
+        "model_assigned": ticket.model_assigned,
+        "triage_difficulty": ticket.triage_difficulty,
+        "triage_reasoning": ticket.triage_reasoning,
+        "denial_reason": ticket.denial_reason,
+        "result": ticket.result,
+        "created_at": ticket.created_at.isoformat(),
+        "updated_at": ticket.updated_at.isoformat(),
+    }
+
+
+@app.patch("/api/tickets/{ticket_id}")
+async def api_update_ticket(
+    ticket_id: int, request: Request, session: AsyncSession = Depends(get_session)
+):
+    """Update ticket fields. Used by the dispatcher for triage and status updates."""
+    ticket = await session.get(Ticket, ticket_id)
+    if not ticket:
+        return {"error": f"Ticket #{ticket_id} not found"}
+
+    body = await request.json()
+    updates = []
+
+    if "status" in body:
+        new_status = body["status"]
+        if new_status not in VALID_STATUSES:
+            return {"error": f"Invalid status '{new_status}'"}
+        allowed = VALID_TRANSITIONS.get(ticket.status, set())
+        if new_status not in allowed:
+            return {"error": f"Cannot transition from '{ticket.status}' to '{new_status}'"}
+        ticket.status = new_status
+        updates.append(f"status={new_status}")
+
+    for field in [
+        "model_assigned",
+        "triage_difficulty",
+        "triage_reasoning",
+        "denial_reason",
+        "result",
+    ]:
+        if field in body:
+            setattr(ticket, field, body[field])
+            updates.append(f"{field} updated")
+
+    if updates:
+        await session.commit()
+
+    return {"id": ticket_id, "updated": updates}
 
 
 @app.get("/api/logs")
