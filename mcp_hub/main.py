@@ -17,7 +17,8 @@ from mcp_hub.config import settings
 from mcp_hub.database import engine, get_session
 from mcp_hub.mcp_server import get_registered_tools, get_tool_names, mcp
 from mcp_hub.metrics import TOTAL_TOOLS, UPSTREAM_CONNECTED, UPSTREAM_TOOLS, metrics_endpoint
-from mcp_hub.models import Base, Ticket, ToolLog
+from mcp_hub.models import Base, MrReview, Ticket, ToolLog
+from mcp_hub.models.mr_review import VALID_VERDICTS, VERDICT_TRANSITIONS
 from mcp_hub.models.ticket import VALID_STATUSES, VALID_TRANSITIONS
 from mcp_hub.proxy.env_resolver import resolve_registry
 from mcp_hub.proxy.manager import ProxyManager
@@ -361,6 +362,158 @@ async def api_update_ticket(
         await session.commit()
 
     return {"id": ticket_id, "updated": updates}
+
+
+# -- MR Review API (for dispatcher) --
+
+
+@app.get("/api/reviews")
+async def api_list_reviews(
+    project_id: int = 0,
+    verdict: str = "",
+    author_role: str = "",
+    limit: int = 20,
+    session: AsyncSession = Depends(get_session),
+):
+    """List MR reviews with optional filters. Used by the review dispatcher."""
+    query = select(MrReview).order_by(MrReview.updated_at.desc())
+    if project_id:
+        query = query.where(MrReview.project_id == project_id)
+    if verdict:
+        query = query.where(MrReview.verdict == verdict)
+    if author_role:
+        query = query.where(MrReview.author_role == author_role)
+    query = query.limit(min(limit, 100))
+
+    reviews = (await session.execute(query)).scalars().all()
+    return {
+        "reviews": [
+            {
+                "id": r.id,
+                "project_id": r.project_id,
+                "mr_iid": r.mr_iid,
+                "title": r.title,
+                "source_branch": r.source_branch,
+                "author_role": r.author_role,
+                "pipeline_status": r.pipeline_status,
+                "verdict": r.verdict,
+                "reason": r.reason,
+                "details": r.details,
+                "reviewer_model": r.reviewer_model,
+                "lines_changed": r.lines_changed,
+                "commit_sha": r.commit_sha,
+                "mr_url": r.mr_url,
+                "created_at": r.created_at.isoformat(),
+                "updated_at": r.updated_at.isoformat(),
+                "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+                "merged_at": r.merged_at.isoformat() if r.merged_at else None,
+            }
+            for r in reviews
+        ],
+        "total": len(reviews),
+    }
+
+
+@app.get("/api/reviews/{review_id}")
+async def api_get_review(review_id: int, session: AsyncSession = Depends(get_session)):
+    """Get a single MR review by ID."""
+    review = await session.get(MrReview, review_id)
+    if not review:
+        return {"error": f"Review #{review_id} not found"}
+    return {
+        "id": review.id,
+        "project_id": review.project_id,
+        "mr_iid": review.mr_iid,
+        "title": review.title,
+        "source_branch": review.source_branch,
+        "author_role": review.author_role,
+        "pipeline_status": review.pipeline_status,
+        "verdict": review.verdict,
+        "reason": review.reason,
+        "details": review.details,
+        "reviewer_model": review.reviewer_model,
+        "lines_changed": review.lines_changed,
+        "commit_sha": review.commit_sha,
+        "mr_url": review.mr_url,
+        "created_at": review.created_at.isoformat(),
+        "updated_at": review.updated_at.isoformat(),
+        "reviewed_at": review.reviewed_at.isoformat() if review.reviewed_at else None,
+        "merged_at": review.merged_at.isoformat() if review.merged_at else None,
+    }
+
+
+@app.post("/api/reviews")
+async def api_create_review(request: Request, session: AsyncSession = Depends(get_session)):
+    """Create a new MR review record. Used by the dispatcher when it finds a new MR."""
+    body = await request.json()
+    required = ["project_id", "mr_iid", "title", "source_branch"]
+    for field in required:
+        if field not in body:
+            return JSONResponse({"error": f"Missing required field: {field}"}, status_code=400)
+
+    review = MrReview(
+        project_id=body["project_id"],
+        mr_iid=body["mr_iid"],
+        title=body["title"],
+        source_branch=body["source_branch"],
+        author_role=body.get("author_role"),
+        pipeline_status=body.get("pipeline_status"),
+        verdict="pending",
+        lines_changed=body.get("lines_changed"),
+        commit_sha=body.get("commit_sha"),
+        mr_url=body.get("mr_url"),
+    )
+    session.add(review)
+    await session.commit()
+    await session.refresh(review)
+    return {"id": review.id, "verdict": "pending"}
+
+
+@app.patch("/api/reviews/{review_id}")
+async def api_update_review(
+    review_id: int, request: Request, session: AsyncSession = Depends(get_session)
+):
+    """Update MR review fields. Used by the dispatcher after sonnet review."""
+    review = await session.get(MrReview, review_id)
+    if not review:
+        return {"error": f"Review #{review_id} not found"}
+
+    body = await request.json()
+    updates = []
+
+    if "verdict" in body:
+        new_verdict = body["verdict"]
+        if new_verdict not in VALID_VERDICTS:
+            return {"error": f"Invalid verdict '{new_verdict}'"}
+        allowed = VERDICT_TRANSITIONS.get(review.verdict, set())
+        if new_verdict not in allowed:
+            return {"error": f"Cannot transition from '{review.verdict}' to '{new_verdict}'"}
+        review.verdict = new_verdict
+        updates.append(f"verdict={new_verdict}")
+
+    for field in [
+        "reason",
+        "details",
+        "reviewer_model",
+        "pipeline_status",
+        "commit_sha",
+        "lines_changed",
+    ]:
+        if field in body:
+            setattr(review, field, body[field])
+            updates.append(f"{field} updated")
+
+    if "reviewed_at" in body:
+        review.reviewed_at = body["reviewed_at"]
+        updates.append("reviewed_at set")
+    if "merged_at" in body:
+        review.merged_at = body["merged_at"]
+        updates.append("merged_at set")
+
+    if updates:
+        await session.commit()
+
+    return {"id": review_id, "updated": updates}
 
 
 @app.get("/api/logs")
