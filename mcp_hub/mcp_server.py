@@ -229,6 +229,16 @@ async def mr_review_mine(author_role: str) -> str:
     return await mr_review_tools.my_mrs(author_role)
 
 
+@mcp.tool()
+async def mr_review_claim(project_id: int, mr_iid: int, author_role: str) -> str:
+    """Claim an MR review by setting your author_role so mr_review_mine() returns it.
+
+    Call this immediately after pushing an MR. The dispatcher creates the review record
+    within ~1 minute; if you get a 'not found' response, retry after a minute.
+    """
+    return await mr_review_tools.claim_mr(project_id, mr_iid, author_role)
+
+
 # -- Marketing Tools --
 
 

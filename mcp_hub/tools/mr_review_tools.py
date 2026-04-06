@@ -7,6 +7,8 @@ from sqlalchemy import select
 from mcp_hub.database import async_session
 from mcp_hub.models.mr_review import VALID_VERDICTS, MrReview
 
+__all__ = ["list_reviews", "get_review", "my_mrs", "claim_mr"]
+
 
 async def list_reviews(
     project_id: int = 0,
@@ -132,3 +134,31 @@ async def my_mrs(author_role: str) -> str:
             if r.reason:
                 lines.append(f"      Reason: {r.reason}")
         return "\n".join(lines)
+
+
+async def claim_mr(project_id: int, mr_iid: int, author_role: str) -> str:
+    """Set author_role on an existing MR review record so mr_review_mine() works."""
+    if not author_role.strip():
+        return "Error: author_role cannot be empty"
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(MrReview)
+            .where(MrReview.project_id == project_id, MrReview.mr_iid == mr_iid)
+            .order_by(MrReview.updated_at.desc())
+            .limit(1)
+        )
+        review = result.scalar_one_or_none()
+
+        if not review:
+            return (
+                f"No review found for PID={project_id} !{mr_iid}. "
+                "The dispatcher may not have created the record yet — retry in ~1 minute."
+            )
+
+        review.author_role = author_role.strip()
+        await session.commit()
+        return (
+            f"Claimed PID={project_id} !{mr_iid} for {author_role}. "
+            f"Use mr_review_mine(author_role='{author_role}') to track status."
+        )

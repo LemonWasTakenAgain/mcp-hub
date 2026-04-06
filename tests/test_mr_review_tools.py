@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mcp_hub.models.mr_review import MrReview
-from mcp_hub.tools.mr_review_tools import get_review, list_reviews, my_mrs
+from mcp_hub.tools.mr_review_tools import claim_mr, get_review, list_reviews, my_mrs
 
 
 def _make_review(**overrides) -> MrReview:
@@ -194,3 +194,43 @@ async def test_my_mrs_with_results():
     assert "Add health probes" in result
     assert "Fix bug" in result
     assert "Lint failures" in result
+
+
+# -- claim_mr tests --
+
+
+@pytest.mark.asyncio
+async def test_claim_mr_success():
+    cm, session = _mock_session()
+    review = _make_review(author_role=None)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = review
+    session.execute = AsyncMock(return_value=mock_result)
+    session.commit = AsyncMock()
+
+    with patch("mcp_hub.tools.mr_review_tools.async_session", return_value=cm):
+        result = await claim_mr(10, 31, "Dev Manager")
+    assert "Claimed" in result
+    assert "Dev Manager" in result
+    assert review.author_role == "Dev Manager"
+
+
+@pytest.mark.asyncio
+async def test_claim_mr_not_found():
+    cm, session = _mock_session()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=mock_result)
+
+    with patch("mcp_hub.tools.mr_review_tools.async_session", return_value=cm):
+        result = await claim_mr(10, 999, "Dev Manager")
+    assert "No review found" in result
+    assert "retry" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_claim_mr_empty_role():
+    with patch("mcp_hub.tools.mr_review_tools.async_session"):
+        result = await claim_mr(10, 31, "")
+    assert "Error" in result
+    assert "author_role" in result
