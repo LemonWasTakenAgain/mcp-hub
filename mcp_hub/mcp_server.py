@@ -7,7 +7,14 @@ import os
 from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import TransportSecuritySettings
 
-from mcp_hub.tools import gitlab_tools, homelab_tools, k8s_tools, mr_review_tools, ticket_tools
+from mcp_hub.tools import (
+    gitlab_tools,
+    homelab_tools,
+    k8s_tools,
+    marketing_tools,
+    mr_review_tools,
+    ticket_tools,
+)
 
 # Allow the MCP Hub hostname for DNS rebinding protection
 _allowed_hosts = ["localhost", "localhost:8500", "127.0.0.1:8500", "192.168.1.40:8500"]
@@ -220,3 +227,169 @@ async def mr_review_get(project_id: int, mr_iid: int) -> str:
 async def mr_review_mine(author_role: str) -> str:
     """List your open (non-merged) MRs with verdict and pipeline status."""
     return await mr_review_tools.my_mrs(author_role)
+
+
+# -- Marketing Tools --
+
+
+@mcp.tool()
+async def marketing_project_create(
+    name: str,
+    description: str = "",
+    target_audience: str = "",
+    value_prop: str = "",
+    status: str = "idea",
+    website_url: str = "",
+    repo_url: str = "",
+    gitlab_project_id: int = 0,
+) -> str:
+    """Create a new marketing project to track a product or initiative."""
+    return await marketing_tools.create_project(
+        name,
+        description,
+        target_audience,
+        value_prop,
+        status,
+        website_url,
+        repo_url,
+        gitlab_project_id,
+    )
+
+
+@mcp.tool()
+async def marketing_project_update(
+    project_id: int,
+    name: str = "",
+    description: str = "",
+    target_audience: str = "",
+    value_prop: str = "",
+    status: str = "",
+    website_url: str = "",
+    repo_url: str = "",
+    gitlab_project_id: int = 0,
+) -> str:
+    """Update a marketing project's fields."""
+    return await marketing_tools.update_project(
+        project_id,
+        name,
+        description,
+        target_audience,
+        value_prop,
+        status,
+        website_url,
+        repo_url,
+        gitlab_project_id,
+    )
+
+
+@mcp.tool()
+async def marketing_project_get(project_id: int) -> str:
+    """Get full details of a marketing project including all campaigns."""
+    return await marketing_tools.get_project(project_id)
+
+
+@mcp.tool()
+async def marketing_project_list(status: str = "") -> str:
+    """List marketing projects, filtered by status (idea/building/launched/growing/sunset)."""
+    return await marketing_tools.list_projects(status)
+
+
+@mcp.tool()
+async def marketing_campaign_create(
+    project_id: int,
+    name: str,
+    channel: str,
+    platform: str = "",
+    status: str = "planned",
+    budget_cents: int = 0,
+    goal: str = "",
+    source: str = "",
+) -> str:
+    """Create a campaign under a marketing project."""
+    return await marketing_tools.create_campaign(
+        project_id, name, channel, platform, status, budget_cents, goal, source
+    )
+
+
+@mcp.tool()
+async def marketing_campaign_update(
+    campaign_id: int,
+    name: str = "",
+    description: str = "",
+    channel: str = "",
+    platform: str = "",
+    status: str = "",
+    budget_cents: int = -1,
+    spend_cents: int = -1,
+    revenue_cents: int = -1,
+    goal: str = "",
+    outcome: str = "",
+    lessons_learned: str = "",
+) -> str:
+    """Update a campaign's fields. Pass -1 for budget/spend/revenue to leave unchanged."""
+    return await marketing_tools.update_campaign(
+        campaign_id,
+        name,
+        description,
+        channel,
+        platform,
+        status,
+        budget_cents,
+        spend_cents,
+        revenue_cents,
+        goal,
+        outcome,
+        lessons_learned,
+    )
+
+
+@mcp.tool()
+async def marketing_campaign_get(campaign_id: int) -> str:
+    """Get full details of a campaign including aggregated metrics."""
+    return await marketing_tools.get_campaign(campaign_id)
+
+
+@mcp.tool()
+async def marketing_campaign_list(project_id: int = 0, status: str = "", channel: str = "") -> str:
+    """List campaigns with optional filters by project, status, or channel."""
+    return await marketing_tools.list_campaigns(project_id, status, channel)
+
+
+@mcp.tool()
+async def marketing_metric_add(
+    campaign_id: int,
+    metric_date: str,
+    impressions: int = 0,
+    clicks: int = 0,
+    conversions: int = 0,
+    spend_cents: int = 0,
+    revenue_cents: int = 0,
+    source: str = "",
+    notes: str = "",
+) -> str:
+    """Add or update a daily metric entry for a campaign (upserts on campaign+date+source)."""
+    return await marketing_tools.add_metric(
+        campaign_id,
+        metric_date,
+        impressions,
+        clicks,
+        conversions,
+        spend_cents,
+        revenue_cents,
+        source,
+        notes,
+    )
+
+
+@mcp.tool()
+async def marketing_metric_query(
+    campaign_id: int = 0, start_date: str = "", end_date: str = ""
+) -> str:
+    """Query metrics with optional filters by campaign and date range (YYYY-MM-DD)."""
+    return await marketing_tools.query_metrics(campaign_id, start_date, end_date)
+
+
+@mcp.tool()
+async def marketing_dashboard() -> str:
+    """Show marketing dashboard with all projects and health scores (green/yellow/red)."""
+    return await marketing_tools.dashboard()
