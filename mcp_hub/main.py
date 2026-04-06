@@ -177,7 +177,9 @@ async def healthz():
 
 @app.get("/health")
 async def health(session: AsyncSession = Depends(get_session)):
-    """Readiness probe — returns 503 if DB is down or majority of upstreams disconnected."""
+    """Readiness probe — returns 503 only if DB is down. Upstream proxy status is
+    reported but does not gate readiness, so core API (tickets, reviews, REST)
+    stays reachable even when upstream MCP servers are temporarily disconnected."""
     try:
         await session.execute(text("SELECT 1"))
         db_ok = True
@@ -193,10 +195,10 @@ async def health(session: AsyncSession = Depends(get_session)):
         connected = ps["connected"]
         total = ps["total_servers"]
 
-    healthy = db_ok and (connected >= total / 2 if total > 0 else True)
+    proxy_healthy = connected >= total / 2 if total > 0 else True
 
     result = {
-        "status": "healthy" if healthy else "degraded",
+        "status": "healthy" if db_ok else "degraded",
         "database": "connected" if db_ok else "disconnected",
         "mcp_tools": len(tool_names),
         "version": "0.2.0",
@@ -208,9 +210,10 @@ async def health(session: AsyncSession = Depends(get_session)):
             "servers_connected": connected,
             "servers_total": total,
             "proxied_tools": proxy_manager.get_status()["total_proxied_tools"],
+            "healthy": proxy_healthy,
         }
 
-    return JSONResponse(content=result, status_code=200 if healthy else 503)
+    return JSONResponse(content=result, status_code=200 if db_ok else 503)
 
 
 @app.get("/api/tools")
@@ -306,7 +309,7 @@ async def api_get_ticket(ticket_id: int, session: AsyncSession = Depends(get_ses
     """Get a single ticket by ID."""
     ticket = await session.get(Ticket, ticket_id)
     if not ticket:
-        return {"error": f"Ticket #{ticket_id} not found"}
+        return JSONResponse({"error": f"Ticket #{ticket_id} not found"}, status_code=404)
     return {
         "id": ticket.id,
         "title": ticket.title,
@@ -332,7 +335,7 @@ async def api_update_ticket(
     """Update ticket fields. Used by the dispatcher for triage and status updates."""
     ticket = await session.get(Ticket, ticket_id)
     if not ticket:
-        return {"error": f"Ticket #{ticket_id} not found"}
+        return JSONResponse({"error": f"Ticket #{ticket_id} not found"}, status_code=404)
 
     body = await request.json()
     updates = []
@@ -340,10 +343,13 @@ async def api_update_ticket(
     if "status" in body:
         new_status = body["status"]
         if new_status not in VALID_STATUSES:
-            return {"error": f"Invalid status '{new_status}'"}
+            return JSONResponse({"error": f"Invalid status '{new_status}'"}, status_code=400)
         allowed = VALID_TRANSITIONS.get(ticket.status, set())
         if new_status not in allowed:
-            return {"error": f"Cannot transition from '{ticket.status}' to '{new_status}'"}
+            return JSONResponse(
+                {"error": f"Cannot transition from '{ticket.status}' to '{new_status}'"},
+                status_code=400,
+            )
         ticket.status = new_status
         updates.append(f"status={new_status}")
 
@@ -419,7 +425,7 @@ async def api_get_review(review_id: int, session: AsyncSession = Depends(get_ses
     """Get a single MR review by ID."""
     review = await session.get(MrReview, review_id)
     if not review:
-        return {"error": f"Review #{review_id} not found"}
+        return JSONResponse({"error": f"Review #{review_id} not found"}, status_code=404)
     return {
         "id": review.id,
         "project_id": review.project_id,
@@ -444,12 +450,39 @@ async def api_get_review(review_id: int, session: AsyncSession = Depends(get_ses
 
 @app.post("/api/reviews")
 async def api_create_review(request: Request, session: AsyncSession = Depends(get_session)):
-    """Create a new MR review record. Used by the dispatcher when it finds a new MR."""
+    """Create or update an MR review record. Used by the dispatcher when it finds a new MR."""
     body = await request.json()
     required = ["project_id", "mr_iid", "title", "source_branch"]
     for field in required:
         if field not in body:
             return JSONResponse({"error": f"Missing required field: {field}"}, status_code=400)
+
+    # Upsert: check if a review already exists for this (project_id, mr_iid)
+    existing = (
+        await session.execute(
+            select(MrReview).where(
+                MrReview.project_id == body["project_id"],
+                MrReview.mr_iid == body["mr_iid"],
+            )
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        existing.title = body["title"]
+        existing.source_branch = body["source_branch"]
+        if "author_role" in body:
+            existing.author_role = body["author_role"]
+        if "pipeline_status" in body:
+            existing.pipeline_status = body["pipeline_status"]
+        if "lines_changed" in body:
+            existing.lines_changed = body["lines_changed"]
+        if "commit_sha" in body:
+            existing.commit_sha = body["commit_sha"]
+        if "mr_url" in body:
+            existing.mr_url = body["mr_url"]
+        await session.commit()
+        await session.refresh(existing)
+        return {"id": existing.id, "verdict": existing.verdict, "updated": True}
 
     review = MrReview(
         project_id=body["project_id"],
@@ -466,7 +499,7 @@ async def api_create_review(request: Request, session: AsyncSession = Depends(ge
     session.add(review)
     await session.commit()
     await session.refresh(review)
-    return {"id": review.id, "verdict": "pending"}
+    return {"id": review.id, "verdict": "pending", "updated": False}
 
 
 @app.patch("/api/reviews/{review_id}")
@@ -476,7 +509,7 @@ async def api_update_review(
     """Update MR review fields. Used by the dispatcher after sonnet review."""
     review = await session.get(MrReview, review_id)
     if not review:
-        return {"error": f"Review #{review_id} not found"}
+        return JSONResponse({"error": f"Review #{review_id} not found"}, status_code=404)
 
     body = await request.json()
     updates = []
@@ -484,12 +517,30 @@ async def api_update_review(
     if "verdict" in body:
         new_verdict = body["verdict"]
         if new_verdict not in VALID_VERDICTS:
-            return {"error": f"Invalid verdict '{new_verdict}'"}
+            return JSONResponse({"error": f"Invalid verdict '{new_verdict}'"}, status_code=400)
         allowed = VERDICT_TRANSITIONS.get(review.verdict, set())
         if new_verdict not in allowed:
-            return {"error": f"Cannot transition from '{review.verdict}' to '{new_verdict}'"}
+            return JSONResponse(
+                {"error": f"Cannot transition from '{review.verdict}' to '{new_verdict}'"},
+                status_code=400,
+            )
+        old_verdict = review.verdict
         review.verdict = new_verdict
         updates.append(f"verdict={new_verdict}")
+
+        # Auto-set reviewed_at when transitioning from pending to a decided verdict
+        if old_verdict == "pending" and new_verdict != "pending" and "reviewed_at" not in body:
+            from datetime import datetime as dt
+
+            review.reviewed_at = dt.utcnow()
+            updates.append("reviewed_at auto-set")
+
+        # Auto-set merged_at when transitioning to merged
+        if new_verdict == "merged" and "merged_at" not in body:
+            from datetime import datetime as dt
+
+            review.merged_at = dt.utcnow()
+            updates.append("merged_at auto-set")
 
     for field in [
         "reason",

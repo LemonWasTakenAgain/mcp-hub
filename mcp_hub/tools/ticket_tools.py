@@ -193,6 +193,8 @@ async def update_ticket(
 
 async def add_comment(ticket_id: int, role: str, content: str) -> str:
     """Add a comment to a ticket."""
+    if role not in VALID_ROLES:
+        return f"Error: invalid role '{role}'. Valid: {', '.join(sorted(VALID_ROLES))}"
     if not content.strip():
         return "Error: comment content cannot be empty"
 
@@ -216,14 +218,10 @@ async def list_denied(from_role: str = "", limit: int = 10) -> str:
     limit = max(1, min(limit, 50))
 
     async with async_session() as session:
-        query = (
-            select(Ticket)
-            .where(Ticket.status == "denied")
-            .order_by(Ticket.updated_at.desc())
-            .limit(limit)
-        )
+        query = select(Ticket).where(Ticket.status == "denied").order_by(Ticket.updated_at.desc())
         if from_role:
             query = query.where(Ticket.from_role == from_role)
+        query = query.limit(limit)
 
         tickets = (await session.execute(query)).scalars().all()
 
