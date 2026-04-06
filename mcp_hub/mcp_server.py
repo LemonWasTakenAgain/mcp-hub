@@ -7,7 +7,7 @@ import os
 from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import TransportSecuritySettings
 
-from mcp_hub.tools import gitlab_tools, homelab_tools, k8s_tools, ticket_tools
+from mcp_hub.tools import gitlab_tools, homelab_tools, k8s_tools, mr_review_tools, ticket_tools
 
 # Allow the MCP Hub hostname for DNS rebinding protection
 _allowed_hosts = ["localhost", "localhost:8500", "127.0.0.1:8500", "192.168.1.40:8500"]
@@ -197,3 +197,26 @@ async def ticket_comment(ticket_id: int, role: str, content: str) -> str:
 async def ticket_denied(from_role: str = "", limit: int = 10) -> str:
     """List denied tickets with reasons, optionally filtered by creator role."""
     return await ticket_tools.list_denied(from_role, limit)
+
+
+# -- MR Review Tools --
+
+
+@mcp.tool()
+async def mr_review_list(
+    project_id: int = 0, author_role: str = "", verdict: str = "", limit: int = 20
+) -> str:
+    """List MR reviews. Filter by project_id, author_role, or verdict."""
+    return await mr_review_tools.list_reviews(project_id, author_role, verdict, limit)
+
+
+@mcp.tool()
+async def mr_review_get(project_id: int, mr_iid: int) -> str:
+    """Get full review details for a specific merge request."""
+    return await mr_review_tools.get_review(project_id, mr_iid)
+
+
+@mcp.tool()
+async def mr_review_mine(author_role: str) -> str:
+    """List your open (non-merged) MRs with verdict and pipeline status."""
+    return await mr_review_tools.my_mrs(author_role)
