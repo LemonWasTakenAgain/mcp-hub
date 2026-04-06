@@ -470,6 +470,10 @@ async def api_create_review(request: Request, session: AsyncSession = Depends(ge
     if existing:
         existing.title = body["title"]
         existing.source_branch = body["source_branch"]
+        existing.verdict = "pending"
+        existing.reason = None
+        existing.details = None
+        existing.reviewed_at = None
         if "author_role" in body:
             existing.author_role = body["author_role"]
         if "pipeline_status" in body:
