@@ -177,7 +177,9 @@ async def healthz():
 
 @app.get("/health")
 async def health(session: AsyncSession = Depends(get_session)):
-    """Readiness probe — returns 503 if DB is down or majority of upstreams disconnected."""
+    """Readiness probe — returns 503 only if DB is down. Upstream proxy status is
+    reported but does not gate readiness, so core API (tickets, reviews, REST)
+    stays reachable even when upstream MCP servers are temporarily disconnected."""
     try:
         await session.execute(text("SELECT 1"))
         db_ok = True
@@ -193,10 +195,10 @@ async def health(session: AsyncSession = Depends(get_session)):
         connected = ps["connected"]
         total = ps["total_servers"]
 
-    healthy = db_ok and (connected >= total / 2 if total > 0 else True)
+    proxy_healthy = connected >= total / 2 if total > 0 else True
 
     result = {
-        "status": "healthy" if healthy else "degraded",
+        "status": "healthy" if db_ok else "degraded",
         "database": "connected" if db_ok else "disconnected",
         "mcp_tools": len(tool_names),
         "version": "0.2.0",
@@ -208,9 +210,10 @@ async def health(session: AsyncSession = Depends(get_session)):
             "servers_connected": connected,
             "servers_total": total,
             "proxied_tools": proxy_manager.get_status()["total_proxied_tools"],
+            "healthy": proxy_healthy,
         }
 
-    return JSONResponse(content=result, status_code=200 if healthy else 503)
+    return JSONResponse(content=result, status_code=200 if db_ok else 503)
 
 
 @app.get("/api/tools")
