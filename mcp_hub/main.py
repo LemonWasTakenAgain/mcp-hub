@@ -504,10 +504,14 @@ async def api_update_review(
             updates.append(f"{field} updated")
 
     if "reviewed_at" in body:
-        review.reviewed_at = body["reviewed_at"]
+        from datetime import datetime as dt
+
+        review.reviewed_at = dt.fromisoformat(body["reviewed_at"])
         updates.append("reviewed_at set")
     if "merged_at" in body:
-        review.merged_at = body["merged_at"]
+        from datetime import datetime as dt
+
+        review.merged_at = dt.fromisoformat(body["merged_at"])
         updates.append("merged_at set")
 
     if updates:
