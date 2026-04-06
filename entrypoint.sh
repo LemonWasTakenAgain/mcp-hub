@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 # Copy git credentials if mounted read-only
 if [ -f /run/secrets/git-credentials ]; then
@@ -7,9 +6,11 @@ if [ -f /run/secrets/git-credentials ]; then
     chmod 600 /home/lemon/.git-credentials
 fi
 
-# Run database migrations
+# Run database migrations (non-fatal — app creates tables on startup via create_all)
 echo "Running database migrations..."
-timeout 30 python -m alembic upgrade head 2>/dev/null || echo "Migration skipped (DB may not be ready or no migrations, tables will be auto-created)"
+if ! timeout 15 python -m alembic upgrade head 2>/dev/null; then
+    echo "Migration skipped (DB may not be ready or no migrations, tables will be auto-created)"
+fi
 
 # Use Verdaccio npm cache if available (keep npmjs as fallback)
 if curl -sf http://verdaccio.applications.svc.cluster.local:4873/-/ping >/dev/null 2>&1; then
