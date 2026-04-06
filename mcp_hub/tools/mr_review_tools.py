@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from mcp_hub.database import async_session
-from mcp_hub.models.mr_review import MrReview
+from mcp_hub.models.mr_review import VALID_VERDICTS, MrReview
 
 
 async def list_reviews(
@@ -16,6 +16,9 @@ async def list_reviews(
 ) -> str:
     """List MR reviews with optional filters."""
     limit = max(1, min(limit, 100))
+
+    if verdict and verdict not in VALID_VERDICTS:
+        return f"Error: invalid verdict '{verdict}'. Valid: {', '.join(sorted(VALID_VERDICTS))}"
 
     async with async_session() as session:
         query = select(MrReview).order_by(MrReview.updated_at.desc())
