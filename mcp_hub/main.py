@@ -575,6 +575,48 @@ async def api_update_review(
     return {"id": review_id, "updated": updates}
 
 
+@app.post("/api/reviews/claim")
+async def api_claim_review(request: Request, session: AsyncSession = Depends(get_session)):
+    """Set author_role on an existing review by (project_id, mr_iid).
+
+    Called by agents immediately after pushing an MR so mr_review_mine() returns results.
+    Returns 404 if the dispatcher hasn't created the record yet — agent should retry.
+    """
+    body = await request.json()
+    for field in ["project_id", "mr_iid", "author_role"]:
+        if field not in body:
+            return JSONResponse({"error": f"Missing required field: {field}"}, status_code=400)
+
+    review = (
+        await session.execute(
+            select(MrReview).where(
+                MrReview.project_id == body["project_id"],
+                MrReview.mr_iid == body["mr_iid"],
+            )
+        )
+    ).scalar_one_or_none()
+
+    if not review:
+        return JSONResponse(
+            {
+                "error": (
+                    f"No review found for PID={body['project_id']} !{body['mr_iid']}. "
+                    "Dispatcher may not have created it yet — retry in ~1 minute."
+                )
+            },
+            status_code=404,
+        )
+
+    review.author_role = body["author_role"]
+    await session.commit()
+    return {
+        "id": review.id,
+        "project_id": review.project_id,
+        "mr_iid": review.mr_iid,
+        "author_role": review.author_role,
+    }
+
+
 @app.get("/api/logs")
 async def get_logs(
     limit: int = 50, tool_name: str = "", session: AsyncSession = Depends(get_session)
