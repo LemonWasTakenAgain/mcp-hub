@@ -11,7 +11,7 @@ VALID_VERDICTS = {"pending", "approved", "rejected", "needs_human", "merged"}
 VERDICT_TRANSITIONS: dict[str, set[str]] = {
     "pending": {"approved", "rejected", "needs_human"},
     "approved": {"merged"},
-    "rejected": {"pending"},  # re-review after author pushes fixes
+    "rejected": {"pending", "approved", "merged"},  # re-review after fix, or direct merge
     "needs_human": {"approved", "rejected", "pending"},  # human decides
     "merged": set(),  # terminal
 }
