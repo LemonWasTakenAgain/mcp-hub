@@ -14,6 +14,9 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+asyncpg://mcphub:mcphub@localhost:5432/mcphub"
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_recycle: int = 3600
 
     # GitLab
     gitlab_url: str = "http://gitlab.steelcanvas.studio"
@@ -52,6 +55,10 @@ class Settings(BaseSettings):
     s3_secret_key: str = ""
     s3_endpoint: str = ""
     fs_allowed_dirs: str = "/home/lemon/projects,/home/lemon/shared"
+
+    # Stalwart Mail (JMAP)
+    stalwart_jmap_url: str = ""
+    stalwart_jmap_token: str = ""
 
     @property
     def sync_database_url(self) -> str:

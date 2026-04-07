@@ -8,6 +8,8 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import TransportSecuritySettings
 
 from mcp_hub.tools import (
+    db_audit_tools,
+    email_tools,
     gitlab_tools,
     homelab_tools,
     k8s_tools,
@@ -403,3 +405,73 @@ async def marketing_metric_query(
 async def marketing_dashboard() -> str:
     """Show marketing dashboard with all projects and health scores (green/yellow/red)."""
     return await marketing_tools.dashboard()
+
+
+# -- Email Tools --
+
+
+@mcp.tool()
+async def email_sync(limit: int = 200) -> str:
+    """Sync recent emails from Stalwart JMAP into the local database for querying."""
+    return await email_tools.sync_emails(limit)
+
+
+@mcp.tool()
+async def email_search(
+    query: str = "",
+    from_addr: str = "",
+    to_addr: str = "",
+    days: int = 30,
+    unread_only: bool = False,
+    flagged_only: bool = False,
+    limit: int = 25,
+) -> str:
+    """Search cached emails by subject, sender, recipient, or date range."""
+    return await email_tools.search_emails(
+        query,
+        from_addr,
+        to_addr,
+        days,
+        unread_only,
+        flagged_only,
+        limit,
+    )
+
+
+@mcp.tool()
+async def email_stats(days: int = 30) -> str:
+    """Get email statistics: volume, unread count, top senders, storage usage."""
+    return await email_tools.email_stats(days)
+
+
+@mcp.tool()
+async def email_get(jmap_id: str) -> str:
+    """Fetch full email body from Stalwart by JMAP message ID (from search results)."""
+    return await email_tools.email_get(jmap_id)
+
+
+# -- Database Audit Tools --
+
+
+@mcp.tool()
+async def db_stats() -> str:
+    """Show row counts and disk usage for all MCP Hub database tables."""
+    return await db_audit_tools.db_stats()
+
+
+@mcp.tool()
+async def db_recent_activity(hours: int = 24) -> str:
+    """Show recent activity across tickets, MR reviews, emails, and tool logs."""
+    return await db_audit_tools.db_recent_activity(hours)
+
+
+@mcp.tool()
+async def db_search(query: str, table: str = "", limit: int = 20) -> str:
+    """Full-text search across all database tables (tickets, reviews, emails, marketing, logs)."""
+    return await db_audit_tools.db_search(query, table, limit)
+
+
+@mcp.tool()
+async def db_table_detail(table: str, limit: int = 20, offset: int = 0) -> str:
+    """Browse rows in a specific database table with pagination."""
+    return await db_audit_tools.db_table_detail(table, limit, offset)
