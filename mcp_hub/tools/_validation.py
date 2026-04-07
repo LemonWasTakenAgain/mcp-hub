@@ -1,6 +1,8 @@
 """Input validation for MCP tools — prevents command injection and bad inputs."""
 
+import ipaddress
 import re
+import socket
 from urllib.parse import urlparse
 
 # Hostname: letters, digits, dots, hyphens only. No shell metacharacters.
@@ -38,8 +40,26 @@ def validate_port(port: int) -> int:
     return port
 
 
-def validate_url(url: str) -> str:
-    """Validate an HTTP(S) URL."""
+def _is_private_ip(hostname: str) -> bool:
+    """Check if a hostname resolves to a private/reserved IP address."""
+    try:
+        addr = ipaddress.ip_address(hostname)
+        return addr.is_private or addr.is_loopback or addr.is_link_local
+    except ValueError:
+        pass
+    try:
+        resolved = socket.getaddrinfo(hostname, None, socket.AF_INET)
+        for _, _, _, _, sockaddr in resolved:
+            addr = ipaddress.ip_address(sockaddr[0])
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                return True
+    except socket.gaierror:
+        pass
+    return False
+
+
+def validate_url(url: str, *, allow_private: bool = False) -> str:
+    """Validate an HTTP(S) URL. Blocks RFC1918/private IPs unless allow_private=True."""
     url = url.strip()
     if not url:
         raise ValueError("URL cannot be empty")
@@ -48,4 +68,9 @@ def validate_url(url: str) -> str:
         raise ValueError(f"Invalid URL scheme: {parsed.scheme!r}. Must be http or https.")
     if not parsed.hostname:
         raise ValueError("URL must have a hostname")
+    if not allow_private and _is_private_ip(parsed.hostname):
+        raise ValueError(
+            f"URL targets a private/internal IP address: {parsed.hostname!r}. "
+            "Use allow_private=True to bypass this check for trusted callers."
+        )
     return url
