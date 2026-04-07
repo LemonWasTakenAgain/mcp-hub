@@ -32,7 +32,7 @@ def mock_httpx():
 
 @pytest.mark.asyncio
 async def test_list_projects_with_results(mock_httpx):
-    mock_httpx.get.return_value = _mock_response(
+    mock_httpx.request.return_value = _mock_response(
         [
             {
                 "path_with_namespace": "infra/mcp-hub",
@@ -48,23 +48,23 @@ async def test_list_projects_with_results(mock_httpx):
 
 @pytest.mark.asyncio
 async def test_list_projects_empty(mock_httpx):
-    mock_httpx.get.return_value = _mock_response([])
+    mock_httpx.request.return_value = _mock_response([])
     result = await list_projects()
     assert "No projects found" in result
 
 
 @pytest.mark.asyncio
 async def test_list_projects_with_search(mock_httpx):
-    mock_httpx.get.return_value = _mock_response([])
+    mock_httpx.request.return_value = _mock_response([])
     await list_projects(search="test", per_page=5)
-    call_args = mock_httpx.get.call_args[0][0]
+    call_args = mock_httpx.request.call_args[0][1]
     assert "search=test" in call_args
     assert "per_page=5" in call_args
 
 
 @pytest.mark.asyncio
 async def test_get_pipelines(mock_httpx):
-    mock_httpx.get.return_value = _mock_response(
+    mock_httpx.request.return_value = _mock_response(
         [
             {
                 "id": 42,
@@ -81,14 +81,14 @@ async def test_get_pipelines(mock_httpx):
 
 @pytest.mark.asyncio
 async def test_get_pipelines_empty(mock_httpx):
-    mock_httpx.get.return_value = _mock_response([])
+    mock_httpx.request.return_value = _mock_response([])
     result = await get_project_pipelines(10)
     assert "No pipelines found" in result
 
 
 @pytest.mark.asyncio
 async def test_get_pipeline_jobs(mock_httpx):
-    mock_httpx.get.return_value = _mock_response(
+    mock_httpx.request.return_value = _mock_response(
         [
             {
                 "name": "lint:ruff",
@@ -105,7 +105,7 @@ async def test_get_pipeline_jobs(mock_httpx):
 
 @pytest.mark.asyncio
 async def test_list_merge_requests(mock_httpx):
-    mock_httpx.get.return_value = _mock_response(
+    mock_httpx.request.return_value = _mock_response(
         [
             {
                 "iid": 1,
@@ -124,7 +124,7 @@ async def test_list_merge_requests(mock_httpx):
 
 @pytest.mark.asyncio
 async def test_create_project(mock_httpx):
-    mock_httpx.post.return_value = _mock_response(
+    mock_httpx.request.return_value = _mock_response(
         {
             "path_with_namespace": "infra/new-project",
             "web_url": "http://gitlab.local/infra/new-project",

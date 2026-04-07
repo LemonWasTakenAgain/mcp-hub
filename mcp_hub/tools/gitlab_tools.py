@@ -1,32 +1,73 @@
 """GitLab integration tools for MCP."""
 
+import asyncio
+import logging
+
 import httpx
 
 from mcp_hub.config import settings
 
+logger = logging.getLogger("mcp_hub.gitlab")
+
+_MAX_RETRIES = 3
+_RETRY_BACKOFF = 1.0
+
+
+async def _gitlab_request(method: str, path: str, *, json: dict | None = None) -> dict | list:
+    """Make an authenticated request to the GitLab API with retry logic."""
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            async with httpx.AsyncClient(
+                base_url=settings.gitlab_url,
+                headers={"PRIVATE-TOKEN": settings.gitlab_token},
+                timeout=30.0,
+            ) as client:
+                resp = await client.request(method, f"/api/v4{path}", json=json)
+                resp.raise_for_status()
+                return resp.json()
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
+            last_exc = e
+            if attempt < _MAX_RETRIES - 1:
+                delay = _RETRY_BACKOFF * (2**attempt)
+                logger.warning(
+                    "GitLab %s %s failed (attempt %d/%d): %s — retrying in %.1fs",
+                    method,
+                    path,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    e,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (502, 503, 504) and attempt < _MAX_RETRIES - 1:
+                last_exc = e
+                delay = _RETRY_BACKOFF * (2**attempt)
+                logger.warning(
+                    "GitLab %s %s returned %d (attempt %d/%d) — retrying in %.1fs",
+                    method,
+                    path,
+                    e.response.status_code,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+            else:
+                raise
+    raise last_exc  # type: ignore[misc]
+
 
 async def _gitlab_get(path: str) -> dict | list:
     """Make an authenticated GET request to the GitLab API."""
-    async with httpx.AsyncClient(
-        base_url=settings.gitlab_url,
-        headers={"PRIVATE-TOKEN": settings.gitlab_token},
-        timeout=30.0,
-    ) as client:
-        resp = await client.get(f"/api/v4{path}")
-        resp.raise_for_status()
-        return resp.json()
+    return await _gitlab_request("GET", path)
 
 
 async def _gitlab_post(path: str, json: dict | None = None) -> dict:
     """Make an authenticated POST request to the GitLab API."""
-    async with httpx.AsyncClient(
-        base_url=settings.gitlab_url,
-        headers={"PRIVATE-TOKEN": settings.gitlab_token},
-        timeout=30.0,
-    ) as client:
-        resp = await client.post(f"/api/v4{path}", json=json)
-        resp.raise_for_status()
-        return resp.json()
+    result = await _gitlab_request("POST", path, json=json)
+    return result  # type: ignore[return-value]
 
 
 async def list_projects(search: str = "", per_page: int = 20) -> str:

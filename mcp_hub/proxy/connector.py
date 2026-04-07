@@ -41,8 +41,8 @@ class UpstreamConnection:
             if self._stack is not None:
                 try:
                     await self._stack.aclose()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Cleanup error for %s: %s", self.server.name, e)
                 self._stack = None
                 self.session = None
             try:
