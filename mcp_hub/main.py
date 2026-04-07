@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
+from datetime import datetime as dt
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
@@ -119,8 +121,6 @@ app = FastAPI(
 @app.middleware("http")
 async def security_and_metrics(request: Request, call_next) -> Response:
     """Add security headers and track request metrics."""
-    import time
-
     start = time.monotonic()
     response = await call_next(request)
     duration = time.monotonic() - start
@@ -227,7 +227,8 @@ async def health(session: AsyncSession = Depends(get_session)):
     try:
         await session.execute(text("SELECT 1"))
         db_ok = True
-    except Exception:
+    except Exception as e:
+        logger.warning("Health check DB probe failed: %s", e)
         db_ok = False
 
     tool_names = get_tool_names()
@@ -578,15 +579,11 @@ async def api_update_review(
 
         # Auto-set reviewed_at when transitioning from pending to a decided verdict
         if old_verdict == "pending" and new_verdict != "pending" and "reviewed_at" not in body:
-            from datetime import datetime as dt
-
             review.reviewed_at = dt.utcnow()
             updates.append("reviewed_at auto-set")
 
         # Auto-set merged_at when transitioning to merged
         if new_verdict == "merged" and "merged_at" not in body:
-            from datetime import datetime as dt
-
             review.merged_at = dt.utcnow()
             updates.append("merged_at auto-set")
 
@@ -603,13 +600,9 @@ async def api_update_review(
             updates.append(f"{field} updated")
 
     if "reviewed_at" in body:
-        from datetime import datetime as dt
-
         review.reviewed_at = dt.fromisoformat(body["reviewed_at"])
         updates.append("reviewed_at set")
     if "merged_at" in body:
-        from datetime import datetime as dt
-
         review.merged_at = dt.fromisoformat(body["merged_at"])
         updates.append("merged_at set")
 

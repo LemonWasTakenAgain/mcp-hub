@@ -275,7 +275,8 @@ class ProxyManager:
                 await conn.connect()
                 self._register_proxied_tools(conn)
                 return True
-            except Exception:
+            except Exception as e:
+                logger.warning("Reconnect failed for %s: %s", conn.server.name, e)
                 return False
 
     async def add_server(self, server: UpstreamServer) -> bool:
