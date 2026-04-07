@@ -12,11 +12,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
 
 from mcp_hub.config import settings
 from mcp_hub.database import engine, get_session
 from mcp_hub.mcp_server import get_registered_tools, get_tool_names, mcp
-from mcp_hub.metrics import TOTAL_TOOLS, UPSTREAM_CONNECTED, UPSTREAM_TOOLS, metrics_endpoint
+from mcp_hub.metrics import (
+    REQUEST_ERRORS,
+    REQUEST_LATENCY,
+    TOTAL_TOOLS,
+    UPSTREAM_CONNECTED,
+    UPSTREAM_TOOLS,
+    metrics_endpoint,
+)
 from mcp_hub.models import Base, MrReview, Ticket, ToolLog
 from mcp_hub.models.mr_review import VALID_VERDICTS, VERDICT_TRANSITIONS
 from mcp_hub.models.ticket import VALID_STATUSES, VALID_TRANSITIONS
@@ -62,7 +70,13 @@ async def lifespan(app: FastAPI):
         level=logging.DEBUG if settings.debug else logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
-    logger.info("MCP Hub starting up")
+    logger.info("MCP Hub starting up (debug=%s)", settings.debug)
+
+    # Warn about missing critical env vars
+    if not settings.gitlab_token:
+        logger.warning("MH_GITLAB_TOKEN not set — GitLab tools will fail")
+    if settings.database_url == "postgresql+asyncpg://mcphub:mcphub@localhost:5432/mcphub":
+        logger.warning("MH_DATABASE_URL is using default — ensure this is intentional")
 
     # Auto-create tables
     try:
@@ -100,6 +114,36 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def security_and_metrics(request: Request, call_next) -> Response:
+    """Add security headers and track request metrics."""
+    import time
+
+    start = time.monotonic()
+    response = await call_next(request)
+    duration = time.monotonic() - start
+
+    # Security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if not settings.debug:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    # Request metrics
+    endpoint = request.url.path
+    status = str(response.status_code)
+    REQUEST_LATENCY.labels(method=request.method, endpoint=endpoint, status=status).observe(
+        duration
+    )
+    if response.status_code >= 400:
+        REQUEST_ERRORS.labels(method=request.method, endpoint=endpoint, status=status).inc()
+
+    return response
+
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
