@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mcp_hub.models.mr_review import MrReview
+from mcp_hub.models.mr_review import VERDICT_TRANSITIONS, MrReview
 from mcp_hub.tools.mr_review_tools import claim_mr, get_review, list_reviews, my_mrs
 
 
@@ -46,6 +46,25 @@ def _mock_session():
     cm.__aenter__ = AsyncMock(return_value=session)
     cm.__aexit__ = AsyncMock(return_value=False)
     return cm, session
+
+
+# -- VERDICT_TRANSITIONS tests --
+
+
+def test_rejected_can_transition_to_merged():
+    assert "merged" in VERDICT_TRANSITIONS["rejected"]
+
+
+def test_rejected_can_transition_to_approved():
+    assert "approved" in VERDICT_TRANSITIONS["rejected"]
+
+
+def test_rejected_can_still_transition_to_pending():
+    assert "pending" in VERDICT_TRANSITIONS["rejected"]
+
+
+def test_merged_is_terminal():
+    assert VERDICT_TRANSITIONS["merged"] == set()
 
 
 # -- list_reviews tests --
