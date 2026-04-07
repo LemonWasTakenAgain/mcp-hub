@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     s3_endpoint: str = ""
     fs_allowed_dirs: str = "/home/lemon/projects,/home/lemon/shared"
 
+    # Stalwart Mail (JMAP)
+    stalwart_jmap_url: str = ""
+    stalwart_jmap_token: str = ""
+
     @property
     def sync_database_url(self) -> str:
         return self.database_url.replace("+asyncpg", "+psycopg2").replace(
