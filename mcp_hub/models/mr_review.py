@@ -2,7 +2,16 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mcp_hub.models.base import Base
@@ -19,7 +28,13 @@ VERDICT_TRANSITIONS: dict[str, set[str]] = {
 
 class MrReview(Base):
     __tablename__ = "mr_reviews"
-    __table_args__ = (UniqueConstraint("project_id", "mr_iid", name="uq_review_project_mr"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "mr_iid", name="uq_review_project_mr"),
+        CheckConstraint(
+            "verdict IN ('pending', 'approved', 'rejected', 'needs_human', 'merged')",
+            name="ck_review_verdict",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(Integer, index=True)
@@ -41,3 +56,19 @@ class MrReview(Base):
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ReviewResetLog(Base):
+    """Audit log for verdict resets triggered by new pushes."""
+
+    __tablename__ = "review_reset_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    review_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("mr_reviews.id", ondelete="CASCADE"), index=True
+    )
+    old_verdict: Mapped[str] = mapped_column(String(20))
+    old_commit_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    new_commit_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    reason: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

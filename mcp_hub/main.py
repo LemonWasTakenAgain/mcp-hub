@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC
 from datetime import datetime as dt
 from pathlib import Path
 
@@ -27,7 +28,7 @@ from mcp_hub.metrics import (
     UPSTREAM_TOOLS,
     metrics_endpoint,
 )
-from mcp_hub.models import Base, MrReview, Ticket, ToolLog
+from mcp_hub.models import Base, MrReview, ReviewResetLog, Ticket, ToolLog
 from mcp_hub.models.mr_review import VALID_VERDICTS, VERDICT_TRANSITIONS
 from mcp_hub.models.ticket import VALID_STATUSES, VALID_TRANSITIONS
 from mcp_hub.proxy.env_resolver import resolve_registry
@@ -496,59 +497,71 @@ async def api_get_review(review_id: int, session: AsyncSession = Depends(get_ses
 @app.post("/api/reviews")
 async def api_create_review(request: Request, session: AsyncSession = Depends(get_session)):
     """Create or update an MR review record. Used by the dispatcher when it finds a new MR."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     body = await request.json()
     required = ["project_id", "mr_iid", "title", "source_branch"]
     for field in required:
         if field not in body:
             return JSONResponse({"error": f"Missing required field: {field}"}, status_code=400)
 
-    # Upsert: check if a review already exists for this (project_id, mr_iid)
-    existing = (
+    # Snapshot old state for audit logging before the atomic upsert
+    old_row = (
         await session.execute(
-            select(MrReview).where(
+            select(MrReview.id, MrReview.verdict, MrReview.commit_sha).where(
                 MrReview.project_id == body["project_id"],
                 MrReview.mr_iid == body["mr_iid"],
             )
         )
-    ).scalar_one_or_none()
+    ).one_or_none()
 
-    if existing:
-        existing.title = body["title"]
-        existing.source_branch = body["source_branch"]
-        existing.verdict = "pending"
-        existing.reason = None
-        existing.details = None
-        existing.reviewed_at = None
-        if "author_role" in body:
-            existing.author_role = body["author_role"]
-        if "pipeline_status" in body:
-            existing.pipeline_status = body["pipeline_status"]
-        if "lines_changed" in body:
-            existing.lines_changed = body["lines_changed"]
-        if "commit_sha" in body:
-            existing.commit_sha = body["commit_sha"]
-        if "mr_url" in body:
-            existing.mr_url = body["mr_url"]
-        await session.commit()
-        await session.refresh(existing)
-        return {"id": existing.id, "verdict": existing.verdict, "updated": True}
+    insert_values = {
+        "project_id": body["project_id"],
+        "mr_iid": body["mr_iid"],
+        "title": body["title"],
+        "source_branch": body["source_branch"],
+        "author_role": body.get("author_role"),
+        "pipeline_status": body.get("pipeline_status"),
+        "verdict": "pending",
+        "lines_changed": body.get("lines_changed"),
+        "commit_sha": body.get("commit_sha"),
+        "mr_url": body.get("mr_url"),
+    }
 
-    review = MrReview(
-        project_id=body["project_id"],
-        mr_iid=body["mr_iid"],
-        title=body["title"],
-        source_branch=body["source_branch"],
-        author_role=body.get("author_role"),
-        pipeline_status=body.get("pipeline_status"),
-        verdict="pending",
-        lines_changed=body.get("lines_changed"),
-        commit_sha=body.get("commit_sha"),
-        mr_url=body.get("mr_url"),
+    update_on_conflict = {
+        "title": body["title"],
+        "source_branch": body["source_branch"],
+        "verdict": "pending",
+        "reason": None,
+        "details": None,
+        "reviewed_at": None,
+    }
+    for field in ("author_role", "pipeline_status", "lines_changed", "commit_sha", "mr_url"):
+        if field in body:
+            update_on_conflict[field] = body[field]
+
+    stmt = (
+        pg_insert(MrReview)
+        .values(**insert_values)
+        .on_conflict_do_update(constraint="uq_review_project_mr", set_=update_on_conflict)
+        .returning(MrReview.id, MrReview.verdict)
     )
-    session.add(review)
+    result = (await session.execute(stmt)).one()
+    was_update = old_row is not None
+
+    if was_update and old_row.verdict not in ("pending", None):
+        session.add(
+            ReviewResetLog(
+                review_id=result.id,
+                old_verdict=old_row.verdict,
+                old_commit_sha=old_row.commit_sha,
+                new_commit_sha=body.get("commit_sha"),
+                reason="push-reset: new commit triggered re-review",
+            )
+        )
+
     await session.commit()
-    await session.refresh(review)
-    return {"id": review.id, "verdict": "pending", "updated": False}
+    return {"id": result.id, "verdict": result.verdict, "updated": was_update}
 
 
 @app.patch("/api/reviews/{review_id}")
@@ -579,12 +592,12 @@ async def api_update_review(
 
         # Auto-set reviewed_at when transitioning from pending to a decided verdict
         if old_verdict == "pending" and new_verdict != "pending" and "reviewed_at" not in body:
-            review.reviewed_at = dt.utcnow()
+            review.reviewed_at = dt.now(UTC)
             updates.append("reviewed_at auto-set")
 
         # Auto-set merged_at when transitioning to merged
         if new_verdict == "merged" and "merged_at" not in body:
-            review.merged_at = dt.utcnow()
+            review.merged_at = dt.now(UTC)
             updates.append("merged_at auto-set")
 
     for field in [
