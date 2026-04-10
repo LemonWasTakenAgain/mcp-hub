@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from mcp_hub.database import async_session
+from mcp_hub.models.audit_log import write_audit_entry
 from mcp_hub.models.ticket import (
     VALID_PRIORITIES,
     VALID_ROLES,
@@ -185,6 +186,7 @@ async def update_ticket(
 
         updates = []
 
+        old_status: str | None = None
         if status:
             if status not in VALID_STATUSES:
                 valid = ", ".join(sorted(VALID_STATUSES))
@@ -195,6 +197,7 @@ async def update_ticket(
                     f"Error: cannot transition from '{ticket.status}' to '{status}'. "
                     f"Allowed: {', '.join(sorted(allowed)) or 'none (terminal state)'}"
                 )
+            old_status = ticket.status
             ticket.status = status
             updates.append(f"status → {status}")
 
@@ -208,6 +211,10 @@ async def update_ticket(
         if not updates:
             return "Error: no fields to update (provide status, result, or denial_reason)"
 
+        if old_status is not None:
+            await write_audit_entry(
+                session, "ticket", ticket_id, old_status, ticket.status, changed_by="mcp_tool"
+            )
         await session.commit()
         return f"Ticket #{ticket_id} updated: {', '.join(updates)}"
 
