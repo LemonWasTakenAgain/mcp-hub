@@ -8,6 +8,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import TransportSecuritySettings
 
 from mcp_hub.tools import (
+    audit_tools,
     canary_tools,
     db_audit_tools,
     email_tools,
@@ -533,3 +534,18 @@ async def canary_record_run(
     return await canary_tools.record_canary_run(
         project_id, branch, outcome, elapsed_seconds, mr_iid, error
     )
+
+
+# -- Audit Trail Tools --
+
+
+@mcp.tool()
+async def ticket_history(ticket_id: int) -> str:
+    """Return the full status transition audit trail for a ticket."""
+    return await audit_tools.ticket_history(ticket_id)
+
+
+@mcp.tool()
+async def mr_review_history(project_id: int, mr_iid: int) -> str:
+    """Return the full verdict transition audit trail for an MR review."""
+    return await audit_tools.mr_review_history(project_id, mr_iid)
