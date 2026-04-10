@@ -132,7 +132,7 @@ async def http_check(url: str) -> str:
         url: Full URL to check (e.g., http://gitlab.homelab.local)
     """
     try:
-        url = validate_url(url)
+        url = validate_url(url, allow_private=True)
     except ValueError as e:
         return f"Invalid URL: {e}"
 

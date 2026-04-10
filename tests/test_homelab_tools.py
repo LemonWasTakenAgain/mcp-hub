@@ -94,3 +94,27 @@ async def test_http_check_rejects_empty():
 async def test_http_check_rejects_javascript():
     result = await http_check("javascript:alert(1)")
     assert "Invalid URL" in result
+
+
+@pytest.mark.asyncio
+async def test_http_check_allows_private_ip():
+    """http_check must accept RFC1918 addresses (it targets internal homelab endpoints)."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.reason_phrase = "OK"
+    mock_response.headers = {"content-type": "text/html"}
+    mock_response.content = b"<html></html>"
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_response)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await http_check("http://192.168.1.1")
+
+    assert "Invalid URL" not in result
+    assert "192.168.1.1" in result
+    assert "200" in result
