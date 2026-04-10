@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mcp_hub.models.mr_review import VERDICT_TRANSITIONS, MrReview
-from mcp_hub.tools.mr_review_tools import claim_mr, get_review, list_reviews, my_mrs
+from mcp_hub.tools.mr_review_tools import claim_mr, get_review, list_reviews, my_mrs, retry_review
 
 
 def _make_review(**overrides) -> MrReview:
@@ -253,3 +253,87 @@ async def test_claim_mr_empty_role():
         result = await claim_mr(10, 31, "")
     assert "Error" in result
     assert "author_role" in result
+
+
+# -- retry_review tests --
+
+
+@pytest.mark.asyncio
+async def test_retry_review_from_rejected():
+    cm, session = _mock_session()
+    review = _make_review(verdict="rejected", reason="Lint failures", details="long details")
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = review
+    session.execute = AsyncMock(return_value=mock_result)
+    session.commit = AsyncMock()
+
+    with patch("mcp_hub.tools.mr_review_tools.async_session", return_value=cm):
+        result = await retry_review(10, 31)
+
+    assert "pending" in result
+    assert "rejected" in result
+    assert review.verdict == "pending"
+    assert review.reason is None
+    assert review.details is None
+    assert review.reviewer_model is None
+    assert review.reviewed_at is None
+
+
+@pytest.mark.asyncio
+async def test_retry_review_from_needs_human():
+    cm, session = _mock_session()
+    review = _make_review(verdict="needs_human", reason="Architecture change")
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = review
+    session.execute = AsyncMock(return_value=mock_result)
+    session.commit = AsyncMock()
+
+    with patch("mcp_hub.tools.mr_review_tools.async_session", return_value=cm):
+        result = await retry_review(10, 31)
+
+    assert "pending" in result
+    assert "needs_human" in result
+    assert review.verdict == "pending"
+
+
+@pytest.mark.asyncio
+async def test_retry_review_not_found():
+    cm, session = _mock_session()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(return_value=mock_result)
+
+    with patch("mcp_hub.tools.mr_review_tools.async_session", return_value=cm):
+        result = await retry_review(10, 999)
+
+    assert "No review found" in result
+
+
+@pytest.mark.asyncio
+async def test_retry_review_wrong_verdict_pending():
+    cm, session = _mock_session()
+    review = _make_review(verdict="pending")
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = review
+    session.execute = AsyncMock(return_value=mock_result)
+
+    with patch("mcp_hub.tools.mr_review_tools.async_session", return_value=cm):
+        result = await retry_review(10, 31)
+
+    assert "Cannot retry" in result
+    assert "pending" in result
+
+
+@pytest.mark.asyncio
+async def test_retry_review_wrong_verdict_merged():
+    cm, session = _mock_session()
+    review = _make_review(verdict="merged")
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = review
+    session.execute = AsyncMock(return_value=mock_result)
+
+    with patch("mcp_hub.tools.mr_review_tools.async_session", return_value=cm):
+        result = await retry_review(10, 31)
+
+    assert "Cannot retry" in result
+    assert "merged" in result
