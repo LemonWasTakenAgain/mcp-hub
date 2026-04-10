@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mcp_hub.models.base import Base
@@ -36,6 +36,17 @@ VALID_ROLES = {
 
 class Ticket(Base):
     __tablename__ = "tickets"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'triaged', 'in_progress', 'completed', "
+            "'denied', 'blocked', 'archived')",
+            name="ck_ticket_status",
+        ),
+        CheckConstraint(
+            "priority IN ('high', 'medium', 'low')",
+            name="ck_ticket_priority",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255))
@@ -61,9 +72,19 @@ class Ticket(Base):
 
 class TicketComment(Base):
     __tablename__ = "ticket_comments"
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('Dev Manager', 'Infra Planner', 'Infra Worker', 'SaaS Dev 1', "
+            "'Stock Matrix Dev', 'Dashboard Dev', 'PR Manager', 'AaaS Dev', "
+            "'Marketing Dev', 'DR Engineer')",
+            name="ck_comment_role",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    ticket_id: Mapped[int] = mapped_column(Integer, ForeignKey("tickets.id"), index=True)
+    ticket_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tickets.id", ondelete="CASCADE"), index=True
+    )
     role: Mapped[str] = mapped_column(String(100))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
