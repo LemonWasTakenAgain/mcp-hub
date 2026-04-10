@@ -242,6 +242,17 @@ async def mr_review_claim(project_id: int, mr_iid: int, author_role: str) -> str
     return await mr_review_tools.claim_mr(project_id, mr_iid, author_role)
 
 
+@mcp.tool()
+async def mr_review_retry(project_id: int, mr_iid: int) -> str:
+    """Reset a rejected or needs_human MR review to pending for re-review.
+
+    Use when an MR was rejected for a transient reason (e.g. CI was flaky but is now
+    green) or after the author has pushed fixes. The automated dispatcher will pick up
+    the pending review and re-run within ~1 minute.
+    """
+    return await mr_review_tools.retry_review(project_id, mr_iid)
+
+
 # -- Marketing Tools --
 
 

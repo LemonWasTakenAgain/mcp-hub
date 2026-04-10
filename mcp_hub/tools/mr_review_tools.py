@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 
 from mcp_hub.database import async_session
 from mcp_hub.models.mr_review import VALID_VERDICTS, MrReview
 
-__all__ = ["list_reviews", "get_review", "my_mrs", "claim_mr"]
+__all__ = ["list_reviews", "get_review", "my_mrs", "claim_mr", "retry_review"]
 
 
 async def list_reviews(
@@ -161,4 +163,46 @@ async def claim_mr(project_id: int, mr_iid: int, author_role: str) -> str:
         return (
             f"Claimed PID={project_id} !{mr_iid} for {author_role}. "
             f"Use mr_review_mine(author_role='{author_role}') to track status."
+        )
+
+
+_RETRYABLE_VERDICTS = {"rejected", "needs_human"}
+
+
+async def retry_review(project_id: int, mr_iid: int) -> str:
+    """Reset a rejected or needs_human MR review back to pending for re-review.
+
+    Only works for reviews in 'rejected' or 'needs_human' state. The automated
+    dispatcher will pick up the pending review and re-run within ~1 minute.
+    """
+    async with async_session() as session:
+        result = await session.execute(
+            select(MrReview)
+            .where(MrReview.project_id == project_id, MrReview.mr_iid == mr_iid)
+            .order_by(MrReview.updated_at.desc())
+            .limit(1)
+        )
+        review = result.scalar_one_or_none()
+
+        if not review:
+            return f"No review found for PID={project_id} !{mr_iid}"
+
+        if review.verdict not in _RETRYABLE_VERDICTS:
+            return (
+                f"Cannot retry PID={project_id} !{mr_iid}: "
+                f"verdict is '{review.verdict}', expected 'rejected' or 'needs_human'"
+            )
+
+        old_verdict = review.verdict
+        review.verdict = "pending"
+        review.reason = None
+        review.details = None
+        review.reviewer_model = None
+        review.reviewed_at = None
+        review.updated_at = datetime.now(UTC)
+        await session.commit()
+
+        return (
+            f"Reset PID={project_id} !{mr_iid} from '{old_verdict}' to 'pending'. "
+            "The dispatcher will re-review within ~1 minute."
         )
