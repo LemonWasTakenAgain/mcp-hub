@@ -1,9 +1,15 @@
 """Test homelab tools."""
 
+import json
+import os
+import time
+from unittest.mock import patch
+
 import pytest
 
 from mcp_hub.tools.homelab_tools import (
     check_service,
+    dispatcher_health,
     dns_lookup,
     http_check,
     ping_host,
@@ -117,4 +123,80 @@ async def test_http_check_allows_private_ip():
 
     assert "Invalid URL" not in result
     assert "192.168.1.1" in result
-    assert "200" in result
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_health_missing_files(tmp_path):
+    """Missing heartbeat files should return unhealthy status."""
+    import mcp_hub.tools.homelab_tools as ht
+
+    with patch.object(ht, "_HEARTBEAT_DIR", tmp_path):
+        result_str = await dispatcher_health()
+
+    result = json.loads(result_str)
+    assert result["status"] == "unhealthy"
+    assert result["dispatcher"]["healthy"] is False
+    assert result["dispatcher"]["last_heartbeat"] == "never"
+    assert result["monitor"]["healthy"] is False
+    assert result["monitor"]["last_heartbeat"] == "never"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_health_fresh_files(tmp_path):
+    """Fresh heartbeat files within thresholds should return healthy."""
+    ts = "2026-04-10T12:00:00Z"
+    (tmp_path / "heartbeat-dispatcher").write_text(ts)
+    (tmp_path / "heartbeat-monitor").write_text(ts)
+
+    import mcp_hub.tools.homelab_tools as ht
+
+    with patch.object(ht, "_HEARTBEAT_DIR", tmp_path):
+        result_str = await dispatcher_health()
+
+    result = json.loads(result_str)
+    assert result["status"] == "healthy"
+    assert result["dispatcher"]["healthy"] is True
+    assert result["dispatcher"]["last_heartbeat"] == ts
+    assert result["monitor"]["healthy"] is True
+    assert result["dispatcher"]["threshold_seconds"] == 300
+    assert result["monitor"]["threshold_seconds"] == 360
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_health_stale_dispatcher(tmp_path):
+    """Stale dispatcher heartbeat (mtime > 300s ago) should report unhealthy."""
+    dispatcher_hb = tmp_path / "heartbeat-dispatcher"
+    monitor_hb = tmp_path / "heartbeat-monitor"
+    dispatcher_hb.write_text("2026-04-10T11:00:00Z")
+    monitor_hb.write_text("2026-04-10T12:00:00Z")
+
+    stale_mtime = time.time() - 400
+    os.utime(dispatcher_hb, (stale_mtime, stale_mtime))
+
+    import mcp_hub.tools.homelab_tools as ht
+
+    with patch.object(ht, "_HEARTBEAT_DIR", tmp_path):
+        result_str = await dispatcher_health()
+
+    result = json.loads(result_str)
+    assert result["status"] == "unhealthy"
+    assert result["dispatcher"]["healthy"] is False
+    assert result["dispatcher"]["age_seconds"] >= 400
+    assert result["monitor"]["healthy"] is True
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_health_json_structure(tmp_path):
+    """Result must parse as JSON and contain all required keys."""
+    import mcp_hub.tools.homelab_tools as ht
+
+    with patch.object(ht, "_HEARTBEAT_DIR", tmp_path):
+        result_str = await dispatcher_health()
+
+    result = json.loads(result_str)
+    assert "status" in result
+    assert "dispatcher" in result
+    assert "monitor" in result
+    for key in ("healthy", "last_heartbeat", "age_seconds", "threshold_seconds"):
+        assert key in result["dispatcher"]
+        assert key in result["monitor"]

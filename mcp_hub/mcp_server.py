@@ -164,6 +164,17 @@ async def homelab_http_check(url: str) -> str:
     return await homelab_tools.http_check(url)
 
 
+@mcp.tool()
+async def homelab_dispatcher_health() -> str:
+    """Check agent-dispatcher and agent-monitor heartbeat health.
+
+    Returns JSON with status (healthy/unhealthy), last heartbeat timestamp, and
+    age in seconds for the dispatcher (threshold: 300s) and monitor (threshold: 360s).
+    Missing or stale heartbeat files are reported as unhealthy.
+    """
+    return await homelab_tools.dispatcher_health()
+
+
 # -- Ticket Queue Tools --
 
 
