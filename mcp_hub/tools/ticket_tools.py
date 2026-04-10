@@ -1,4 +1,15 @@
-"""Ticket queue tools for cross-agent coordination."""
+"""Ticket queue tools for cross-agent coordination.
+
+Status lifecycle: queued → triaged → in_progress → completed/denied/blocked → archived
+
+Cross-agent workflow and denied-ticket cascade are defined in the "Cross-Agent Ticket
+System" section of ~/.claude/rules/agent-standards.md.
+Role → project ownership map: ~/projects/homelab/agent-prompts/00-INDEX.md
+
+Agents create tickets for work outside their scope and poll for completion — they do
+not fulfill tickets. The dispatcher (agent-dispatcher) picks up queued tickets, triages
+with haiku, and spawns a dedicated agent to fulfill each one.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +34,11 @@ async def create_ticket(
     to_role: str,
     priority: str = "medium",
 ) -> str:
-    """Create a new ticket in the queue."""
+    """Create a new ticket in the queue.
+
+    Valid roles and project ownership: ~/projects/homelab/agent-prompts/00-INDEX.md
+    Workflow rules: ~/.claude/rules/agent-standards.md (Cross-Agent Ticket System)
+    """
     if not title.strip():
         return "Error: title cannot be empty"
     if not description.strip():
@@ -60,7 +75,10 @@ async def list_tickets(
     to_role: str = "",
     limit: int = 20,
 ) -> str:
-    """List tickets with optional filters."""
+    """List tickets with optional filters.
+
+    Status lifecycle: queued → triaged → in_progress → completed/denied/blocked → archived
+    """
     limit = max(1, min(limit, 100))
 
     async with async_session() as session:
@@ -105,7 +123,10 @@ async def list_tickets(
 
 
 async def get_ticket(ticket_id: int) -> str:
-    """Get full ticket details including comments."""
+    """Get full ticket details including comments.
+
+    Denied-ticket cascade rules: ~/.claude/rules/agent-standards.md (Cross-Agent Ticket System)
+    """
     async with async_session() as session:
         result = await session.execute(
             select(Ticket).where(Ticket.id == ticket_id).options(selectinload(Ticket.comments))
@@ -214,7 +235,10 @@ async def add_comment(ticket_id: int, role: str, content: str) -> str:
 
 
 async def list_denied(from_role: str = "", limit: int = 10) -> str:
-    """List denied tickets, optionally filtered by creator role."""
+    """List denied tickets, optionally filtered by creator role.
+
+    Denied-ticket cascade (what to do next): ~/.claude/rules/agent-standards.md
+    """
     limit = max(1, min(limit, 50))
 
     async with async_session() as session:

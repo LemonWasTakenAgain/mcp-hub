@@ -1,4 +1,14 @@
-"""MR review tools for agents to check merge request status."""
+"""MR review tools for agents to check merge request status.
+
+Verdict lifecycle: pending → approved/rejected/needs_human → merged
+
+Review contract:
+- Automated reviewer checks are defined in ~/.claude/rules/pr-standards.md
+- Agent role → project ownership map: ~/projects/homelab/agent-prompts/00-INDEX.md
+
+The dispatcher spawns a sonnet reviewer for every open MR, records its verdict here,
+and auto-merges on approval. Agents push MRs and poll — they do not review or merge.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +26,11 @@ async def list_reviews(
     verdict: str = "",
     limit: int = 20,
 ) -> str:
-    """List MR reviews with optional filters."""
+    """List MR reviews with optional filters.
+
+    Review checks are defined in ~/.claude/rules/pr-standards.md.
+    Role → project ownership: ~/projects/homelab/agent-prompts/00-INDEX.md
+    """
     limit = max(1, min(limit, 100))
 
     if verdict and verdict not in VALID_VERDICTS:
@@ -60,7 +74,11 @@ async def list_reviews(
 
 
 async def get_review(project_id: int, mr_iid: int) -> str:
-    """Get full review details for a specific MR."""
+    """Get full review details for a specific MR.
+
+    Verdict lifecycle: pending → approved/rejected/needs_human → merged
+    Review contract: ~/.claude/rules/pr-standards.md
+    """
     async with async_session() as session:
         result = await session.execute(
             select(MrReview)
@@ -109,7 +127,11 @@ async def get_review(project_id: int, mr_iid: int) -> str:
 
 
 async def my_mrs(author_role: str) -> str:
-    """List all open (non-merged) MR reviews for a specific agent role."""
+    """List all open (non-merged) MR reviews for a specific agent role.
+
+    Role → project ownership: ~/projects/homelab/agent-prompts/00-INDEX.md
+    Review contract: ~/.claude/rules/pr-standards.md
+    """
     async with async_session() as session:
         result = await session.execute(
             select(MrReview)
@@ -137,7 +159,11 @@ async def my_mrs(author_role: str) -> str:
 
 
 async def claim_mr(project_id: int, mr_iid: int, author_role: str) -> str:
-    """Set author_role on an existing MR review record so mr_review_mine() works."""
+    """Set author_role on an existing MR review record so mr_review_mine() works.
+
+    Call this after pushing an MR so the review dispatcher can associate the record
+    with your role. Role list: ~/projects/homelab/agent-prompts/00-INDEX.md
+    """
     if not author_role.strip():
         return "Error: author_role cannot be empty"
 
