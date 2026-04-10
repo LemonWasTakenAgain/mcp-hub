@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import platform
 import shutil
 from datetime import UTC, datetime
+from pathlib import Path
 
 from mcp_hub.tools._validation import validate_hostname, validate_port, validate_url
+
+_HEARTBEAT_DIR = Path(os.path.expanduser("~/.local/share/agent-dispatcher"))
 
 
 async def system_info() -> str:
@@ -123,6 +128,57 @@ async def dns_lookup(hostname: str) -> str:
     if result:
         return f"DNS lookup for {hostname}:\n{result}"
     return f"No DNS records found for {hostname}."
+
+
+async def dispatcher_health() -> str:
+    """Check agent-dispatcher and agent-monitor heartbeat health.
+
+    Reads heartbeat files written by agent-dispatcher and agent-monitor on each
+    successful cycle. Returns JSON with health status, last heartbeat timestamp,
+    and age in seconds for each component.
+    """
+    dispatcher_hb = _HEARTBEAT_DIR / "heartbeat-dispatcher"
+    monitor_hb = _HEARTBEAT_DIR / "heartbeat-monitor"
+
+    dispatcher_threshold = 300
+    monitor_threshold = 360
+
+    def _check_heartbeat(hb_path: Path, threshold: int) -> dict:
+        if not hb_path.exists():
+            return {
+                "healthy": False,
+                "last_heartbeat": "never",
+                "age_seconds": -1,
+                "threshold_seconds": threshold,
+            }
+        try:
+            last_heartbeat = hb_path.read_text().strip()
+            age_seconds = int(datetime.now(UTC).timestamp() - hb_path.stat().st_mtime)
+        except OSError:
+            return {
+                "healthy": False,
+                "last_heartbeat": "unknown",
+                "age_seconds": -1,
+                "threshold_seconds": threshold,
+            }
+        return {
+            "healthy": age_seconds <= threshold,
+            "last_heartbeat": last_heartbeat,
+            "age_seconds": age_seconds,
+            "threshold_seconds": threshold,
+        }
+
+    dispatcher_info = _check_heartbeat(dispatcher_hb, dispatcher_threshold)
+    monitor_info = _check_heartbeat(monitor_hb, monitor_threshold)
+
+    overall_healthy = dispatcher_info["healthy"] and monitor_info["healthy"]
+
+    result = {
+        "status": "healthy" if overall_healthy else "unhealthy",
+        "dispatcher": dispatcher_info,
+        "monitor": monitor_info,
+    }
+    return json.dumps(result, indent=2)
 
 
 async def http_check(url: str) -> str:
