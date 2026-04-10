@@ -8,6 +8,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import TransportSecuritySettings
 
 from mcp_hub.tools import (
+    canary_tools,
     db_audit_tools,
     email_tools,
     gitlab_tools,
@@ -487,3 +488,37 @@ async def db_search(query: str, table: str = "", limit: int = 20) -> str:
 async def db_table_detail(table: str, limit: int = 20, offset: int = 0) -> str:
     """Browse rows in a specific database table with pagination."""
     return await db_audit_tools.db_table_detail(table, limit, offset)
+
+
+# -- Canary Tools --
+
+
+@mcp.tool()
+async def canary_list_runs(limit: int = 20, outcome: str = "") -> str:
+    """List recent MR pipeline canary run results.
+
+    The canary creates a trivial MR in user-projects/mr-canary (PID=26) every 6 hours
+    and measures whether the automated reviewer merges it within 10 minutes.
+
+    outcome filter: pass, timeout, error, needs_human (empty = all)
+    """
+    return await canary_tools.list_canary_runs(limit, outcome)
+
+
+@mcp.tool()
+async def canary_record_run(
+    project_id: int,
+    branch: str,
+    outcome: str,
+    elapsed_seconds: int,
+    mr_iid: int = 0,
+    error: str = "",
+) -> str:
+    """Record a canary run result. Called by the canary runner after each run.
+
+    outcome: pass | timeout | error | needs_human
+    mr_iid: 0 if MR creation failed, otherwise the MR IID
+    """
+    return await canary_tools.record_canary_run(
+        project_id, branch, outcome, elapsed_seconds, mr_iid, error
+    )

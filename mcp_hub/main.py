@@ -28,7 +28,7 @@ from mcp_hub.metrics import (
     UPSTREAM_TOOLS,
     metrics_endpoint,
 )
-from mcp_hub.models import Base, MrReview, ReviewResetLog, Ticket, ToolLog
+from mcp_hub.models import Base, MrCanaryRun, MrReview, ReviewResetLog, Ticket, ToolLog
 from mcp_hub.models.mr_review import VALID_VERDICTS, VERDICT_TRANSITIONS
 from mcp_hub.models.ticket import VALID_STATUSES, VALID_TRANSITIONS
 from mcp_hub.proxy.env_resolver import resolve_registry
@@ -350,6 +350,39 @@ async def api_list_tickets(
     }
 
 
+@app.post("/api/tickets")
+async def api_create_ticket(request: Request, session: AsyncSession = Depends(get_session)):
+    """Create a new ticket. Used by automated scripts (e.g. canary runner) and the dispatcher."""
+    from mcp_hub.models.ticket import VALID_PRIORITIES
+
+    body = await request.json()
+    required = ["title", "description", "from_role", "to_role"]
+    for field in required:
+        if field not in body:
+            return JSONResponse({"error": f"Missing required field: {field}"}, status_code=400)
+
+    priority = body.get("priority", "medium")
+    if priority not in VALID_PRIORITIES:
+        return JSONResponse(
+            {"error": f"Invalid priority '{priority}'. Valid: {sorted(VALID_PRIORITIES)}"},
+            status_code=400,
+        )
+
+    ticket = Ticket(
+        title=body["title"],
+        description=body["description"],
+        from_role=body["from_role"],
+        to_role=body["to_role"],
+        priority=priority,
+        status="queued",
+    )
+    session.add(ticket)
+    await session.commit()
+    await session.refresh(ticket)
+    logger.info("Ticket #%d created via REST: %s", ticket.id, ticket.title)
+    return {"id": ticket.id, "title": ticket.title, "status": ticket.status}
+
+
 @app.get("/api/tickets/{ticket_id}")
 async def api_get_ticket(ticket_id: int, session: AsyncSession = Depends(get_session)):
     """Get a single ticket by ID."""
@@ -665,6 +698,68 @@ async def api_claim_review(request: Request, session: AsyncSession = Depends(get
         "mr_iid": review.mr_iid,
         "author_role": review.author_role,
     }
+
+
+@app.get("/api/canary-runs")
+async def api_list_canary_runs(
+    limit: int = 20,
+    outcome: str = "",
+    session: AsyncSession = Depends(get_session),
+):
+    """List recent MR canary run results. Used by dashboards and monitoring."""
+    query = select(MrCanaryRun).order_by(MrCanaryRun.created_at.desc()).limit(min(limit, 100))
+    if outcome:
+        query = query.where(MrCanaryRun.outcome == outcome)
+    runs = (await session.execute(query)).scalars().all()
+    return {
+        "runs": [
+            {
+                "id": r.id,
+                "project_id": r.project_id,
+                "branch": r.branch,
+                "mr_iid": r.mr_iid,
+                "outcome": r.outcome,
+                "elapsed_seconds": r.elapsed_seconds,
+                "error": r.error,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in runs
+        ],
+        "total": len(runs),
+    }
+
+
+@app.post("/api/canary-runs")
+async def api_record_canary_run(request: Request, session: AsyncSession = Depends(get_session)):
+    """Record a canary run result. Called by the canary runner script after each run."""
+    from mcp_hub.models.canary import VALID_OUTCOMES
+
+    body = await request.json()
+    required = ["branch", "outcome", "elapsed_seconds"]
+    for field in required:
+        if field not in body:
+            return JSONResponse({"error": f"Missing required field: {field}"}, status_code=400)
+
+    outcome = body["outcome"]
+    if outcome not in VALID_OUTCOMES:
+        return JSONResponse(
+            {"error": f"Invalid outcome '{outcome}'. Valid: {sorted(VALID_OUTCOMES)}"},
+            status_code=400,
+        )
+
+    run = MrCanaryRun(
+        project_id=body.get("project_id", 26),
+        branch=body["branch"],
+        mr_iid=body.get("mr_iid") or None,
+        outcome=outcome,
+        elapsed_seconds=int(body["elapsed_seconds"]),
+        error=body.get("error") or None,
+    )
+    session.add(run)
+    await session.commit()
+    await session.refresh(run)
+    logger.info("Canary run #%d recorded: %s (%s)", run.id, outcome, run.branch)
+    return {"id": run.id, "outcome": outcome, "branch": run.branch}
 
 
 @app.get("/api/logs")

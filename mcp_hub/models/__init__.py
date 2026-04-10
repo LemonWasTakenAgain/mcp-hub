@@ -1,6 +1,7 @@
 """Database models."""
 
 from mcp_hub.models.base import Base
+from mcp_hub.models.canary import MrCanaryRun
 from mcp_hub.models.email import EmailMessage, EmailSyncState
 from mcp_hub.models.marketing import MarketingCampaign, MarketingMetric, MarketingProject
 from mcp_hub.models.mr_review import MrReview, ReviewResetLog
@@ -14,6 +15,7 @@ __all__ = [
     "MarketingCampaign",
     "MarketingMetric",
     "MarketingProject",
+    "MrCanaryRun",
     "MrReview",
     "ReviewResetLog",
     "Ticket",
