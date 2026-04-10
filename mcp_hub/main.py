@@ -148,8 +148,8 @@ async def security_and_metrics(request: Request, call_next) -> Response:
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
-# Mount MCP SSE transport at /mcp
-mcp_app = mcp.sse_app()
+# Mount MCP Streamable HTTP transport at /mcp (stateless — no per-pod session state)
+mcp_app = mcp.streamable_http_app()
 app.mount("/mcp", mcp_app)
 app.add_route("/metrics", metrics_endpoint)
 
