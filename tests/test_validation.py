@@ -114,3 +114,18 @@ class TestValidateUrl:
     def test_rejects_no_hostname(self):
         with pytest.raises(ValueError, match="hostname"):
             validate_url("http://")
+
+    def test_rejects_rfc1918_ipv4(self):
+        with pytest.raises(ValueError, match="private"):
+            validate_url("http://192.168.1.1")
+
+    def test_rejects_loopback(self):
+        with pytest.raises(ValueError, match="private"):
+            validate_url("http://127.0.0.1")
+
+    def test_rejects_10_network(self):
+        with pytest.raises(ValueError, match="private"):
+            validate_url("http://10.0.0.1")
+
+    def test_allows_private_with_flag(self):
+        assert validate_url("http://192.168.1.1", allow_private=True) == "http://192.168.1.1"
