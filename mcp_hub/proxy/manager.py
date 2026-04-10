@@ -26,6 +26,7 @@ class ProxyManager:
         self._tool_map: dict[str, tuple[UpstreamConnection, str]] = {}
         self._health_task: asyncio.Task | None = None
         self._reconnect_locks: dict[str, asyncio.Lock] = {}
+        self._reconnect_attempts: dict[str, int] = {}
 
     async def start(self) -> None:
         """Connect to all enabled upstream servers and register their tools."""
@@ -222,22 +223,45 @@ class ProxyManager:
         register_tool(proxied_name, tool)
 
     async def _health_loop(self) -> None:
-        """Periodically check upstream connections and reconnect if needed."""
+        """Periodically check upstream connections and reconnect with backoff."""
         while True:
             await asyncio.sleep(15)
             for name, conn in list(self.connections.items()):
                 if not conn.connected and conn.server.auto_restart and conn.server.enabled:
+                    # Exponential backoff: 15s, 30s, 60s, 120s, 300s cap
+                    attempts = self._reconnect_attempts.get(name, 0)
+                    backoff = min(15 * (2**attempts), 300)
+                    if attempts > 0 and backoff > 15:
+                        # Skip this cycle if backoff hasn't elapsed
+                        # (health loop runs every 15s, so skip cycles)
+                        cycles_to_skip = backoff // 15
+                        if attempts % max(cycles_to_skip, 1) != 0:
+                            self._reconnect_attempts[name] = attempts + 1
+                            continue
+
                     lock = self._reconnect_locks.setdefault(name, asyncio.Lock())
                     if lock.locked():
-                        continue  # Already reconnecting via manual reconnect()
+                        continue
                     async with lock:
-                        logger.info("Attempting reconnect to %s...", name)
+                        logger.info(
+                            "Attempting reconnect to %s (attempt %d)...",
+                            name,
+                            attempts + 1,
+                        )
                         try:
                             await conn.connect()
                             self._register_proxied_tools(conn)
+                            self._reconnect_attempts.pop(name, None)
                             logger.info("Reconnected to %s", name)
                         except Exception as e:
-                            logger.warning("Reconnect to %s failed: %s", name, e)
+                            self._reconnect_attempts[name] = attempts + 1
+                            logger.warning(
+                                "Reconnect to %s failed (attempt %d, next backoff ~%ds): %s",
+                                name,
+                                attempts + 1,
+                                min(15 * (2 ** (attempts + 1)), 300),
+                                e,
+                            )
 
     async def stop(self) -> None:
         """Disconnect from all upstream servers."""
@@ -274,6 +298,7 @@ class ProxyManager:
             try:
                 await conn.connect()
                 self._register_proxied_tools(conn)
+                self._reconnect_attempts.pop(name, None)
                 return True
             except Exception as e:
                 logger.warning("Reconnect failed for %s: %s", conn.server.name, e)

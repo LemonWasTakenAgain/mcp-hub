@@ -105,52 +105,73 @@ class UpstreamConnection:
         )
 
     async def call_tool(self, tool_name: str, arguments: dict | None = None) -> str:
-        """Call a tool on the upstream server."""
+        """Call a tool on the upstream server with retries."""
         if not self.connected or not self.session:
             raise ConnectionError(f"Not connected to {self.server.name}")
 
         if time.monotonic() < self._circuit_open_until:
             raise ConnectionError(f"Circuit open for {self.server.name}, retry after cooldown")
 
-        try:
-            result = await asyncio.wait_for(
-                self.session.call_tool(tool_name, arguments or {}),
-                timeout=self.server.timeout,
-            )
-            # Combine all content blocks into a string
-            parts = []
-            for content in result.content:
-                if hasattr(content, "text"):
-                    parts.append(content.text)
-                elif hasattr(content, "data"):
-                    parts.append(f"[binary data: {content.mimeType}]")
-                else:
-                    parts.append(str(content))
-            self._consecutive_failures = 0
-            return "\n".join(parts)
+        last_error: Exception | None = None
+        max_attempts = self.server.retries + 1
 
-        except TimeoutError:
-            raise TimeoutError(
-                f"Tool {tool_name} on {self.server.name} timed out after {self.server.timeout}s"
+        for attempt in range(max_attempts):
+            try:
+                result = await asyncio.wait_for(
+                    self.session.call_tool(tool_name, arguments or {}),
+                    timeout=self.server.timeout,
+                )
+                # Combine all content blocks into a string
+                parts = []
+                for content in result.content:
+                    if hasattr(content, "text"):
+                        parts.append(content.text)
+                    elif hasattr(content, "data"):
+                        parts.append(f"[binary data: {content.mimeType}]")
+                    else:
+                        parts.append(str(content))
+                self._consecutive_failures = 0
+                return "\n".join(parts)
+
+            except TimeoutError:
+                raise TimeoutError(
+                    f"Tool {tool_name} on {self.server.name} timed out after {self.server.timeout}s"
+                )
+            except Exception as e:
+                last_error = e
+                if attempt < max_attempts - 1:
+                    delay = 0.5 * (2**attempt)
+                    logger.info(
+                        "Retrying %s on %s (attempt %d/%d) in %.1fs: %s",
+                        tool_name,
+                        self.server.name,
+                        attempt + 1,
+                        max_attempts,
+                        delay,
+                        e,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+        # All retries exhausted
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self.server.circuit_breaker_threshold:
+            self._circuit_open_until = time.monotonic() + self.server.circuit_breaker_cooldown
+            logger.warning(
+                "Circuit opened for %s after %d consecutive failures — skipping for %.0fs",
+                self.server.name,
+                self._consecutive_failures,
+                self.server.circuit_breaker_cooldown,
             )
-        except Exception as e:
-            self._consecutive_failures += 1
-            if self._consecutive_failures >= self.server.circuit_breaker_threshold:
-                self._circuit_open_until = time.monotonic() + self.server.circuit_breaker_cooldown
-                logger.warning(
-                    "Circuit opened for %s after %d consecutive failures — skipping for %.0fs",
-                    self.server.name,
-                    self._consecutive_failures,
-                    self.server.circuit_breaker_cooldown,
-                )
-            if self.server.auto_restart:
-                logger.warning(
-                    "Tool call failed on %s, will reconnect: %s",
-                    self.server.name,
-                    e,
-                )
-                self.connected = False
-            raise
+        if self.server.auto_restart:
+            logger.warning(
+                "Tool call failed on %s after %d attempts, will reconnect: %s",
+                self.server.name,
+                max_attempts,
+                last_error,
+            )
+            self.connected = False
+        raise last_error  # type: ignore[misc]
 
     async def refresh_tools(self) -> list[Tool]:
         """Re-discover tools from the upstream server."""
