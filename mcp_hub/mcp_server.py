@@ -1,4 +1,4 @@
-"""MCP Server - registers all tools and serves them over SSE transport."""
+"""MCP Server - registers all tools and serves them over Streamable HTTP transport."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ mcp = FastMCP(
     instructions=(
         "Internal homelab MCP server providing GitLab, Kubernetes, and system administration tools."
     ),
+    stateless_http=True,
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_hosts=_allowed_hosts,
