@@ -550,6 +550,9 @@ async def api_create_review(request: Request, session: AsyncSession = Depends(ge
         )
     ).one_or_none()
 
+    raw_mr_url = body.get("mr_url")
+    clean_mr_url = raw_mr_url.replace(":31356", "") if raw_mr_url else raw_mr_url
+
     insert_values = {
         "project_id": body["project_id"],
         "mr_iid": body["mr_iid"],
@@ -560,7 +563,7 @@ async def api_create_review(request: Request, session: AsyncSession = Depends(ge
         "verdict": "pending",
         "lines_changed": body.get("lines_changed"),
         "commit_sha": body.get("commit_sha"),
-        "mr_url": body.get("mr_url"),
+        "mr_url": clean_mr_url,
     }
 
     update_on_conflict = {
@@ -571,9 +574,11 @@ async def api_create_review(request: Request, session: AsyncSession = Depends(ge
         "details": None,
         "reviewed_at": None,
     }
-    for field in ("author_role", "pipeline_status", "lines_changed", "commit_sha", "mr_url"):
+    for field in ("author_role", "pipeline_status", "lines_changed", "commit_sha"):
         if field in body:
             update_on_conflict[field] = body[field]
+    if "mr_url" in body:
+        update_on_conflict["mr_url"] = clean_mr_url
 
     stmt = (
         pg_insert(MrReview)
