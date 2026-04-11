@@ -488,6 +488,7 @@ async def api_list_reviews(
                 "lines_changed": r.lines_changed,
                 "commit_sha": r.commit_sha,
                 "mr_url": r.mr_url,
+                "rebase_ticket_id": r.rebase_ticket_id,
                 "created_at": r.created_at.isoformat(),
                 "updated_at": r.updated_at.isoformat(),
                 "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
@@ -520,6 +521,7 @@ async def api_get_review(review_id: int, session: AsyncSession = Depends(get_ses
         "lines_changed": review.lines_changed,
         "commit_sha": review.commit_sha,
         "mr_url": review.mr_url,
+        "rebase_ticket_id": review.rebase_ticket_id,
         "created_at": review.created_at.isoformat(),
         "updated_at": review.updated_at.isoformat(),
         "reviewed_at": review.reviewed_at.isoformat() if review.reviewed_at else None,
@@ -640,6 +642,7 @@ async def api_update_review(
         "pipeline_status",
         "commit_sha",
         "lines_changed",
+        "rebase_ticket_id",
     ]:
         if field in body:
             setattr(review, field, body[field])
