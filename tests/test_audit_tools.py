@@ -73,3 +73,36 @@ async def test_mr_review_history_no_review():
     with patch("mcp_hub.tools.audit_tools.async_session", return_value=ctx):
         result = await mr_review_history(10, 99)
     assert "No review record found" in result
+
+
+@pytest.mark.asyncio
+async def test_mr_review_history_with_entries():
+    ctx, session = _mock_session()
+
+    # First execute: look up the MrReview record
+    review_mock = MagicMock()
+    review_mock.id = 42
+    review_result = MagicMock()
+    review_result.scalar_one_or_none = MagicMock(return_value=review_mock)
+
+    # Second execute: look up AuditLog entries
+    entry = _make_audit_entry(
+        entity_type="mr_review",
+        entity_id=42,
+        from_status="pending",
+        to_status="approved",
+        changed_by="api",
+        reason="pipeline passed",
+    )
+    audit_result = MagicMock()
+    audit_result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=[entry])))
+
+    session.execute = AsyncMock(side_effect=[review_result, audit_result])
+
+    with patch("mcp_hub.tools.audit_tools.async_session", return_value=ctx):
+        result = await mr_review_history(10, 47)
+
+    assert "Audit trail for PID=10 !47" in result
+    assert "pending → approved" in result
+    assert "by api" in result
+    assert "pipeline passed" in result
