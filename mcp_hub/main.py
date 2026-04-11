@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
@@ -49,6 +50,26 @@ _STATIC_DIR = _BASE_DIR / "static"
 
 # Global proxy manager instance
 proxy_manager: ProxyManager | None = None
+
+
+def _add_missing_columns(connection) -> None:
+    """Detect columns in ORM models missing from the DB and add them.
+
+    create_all only creates new tables — it won't ALTER existing ones.
+    This runs DDL for any nullable columns the model defines but the DB lacks.
+    """
+    inspector = sa_inspect(connection)
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        db_columns = {c["name"] for c in inspector.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in db_columns:
+                continue
+            col_type = col.type.compile(connection.engine.dialect)
+            stmt = f'ALTER TABLE {table.name} ADD COLUMN IF NOT EXISTS "{col.name}" {col_type}'
+            connection.execute(text(stmt))
+            logger.info("Added missing column %s.%s (%s)", table.name, col.name, col_type)
 
 
 def _load_registry() -> UpstreamRegistry:
@@ -86,10 +107,11 @@ async def lifespan(app: FastAPI):
     if settings.database_url == "postgresql+asyncpg://mcphub:mcphub@localhost:5432/mcphub":
         logger.warning("MH_DATABASE_URL is using default — ensure this is intentional")
 
-    # Auto-create tables
+    # Auto-create tables + add missing columns
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(_add_missing_columns)
         logger.info("Database tables ensured")
     except Exception as e:
         logger.error("Database initialization failed: %s", e)
