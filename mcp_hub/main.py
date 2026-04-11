@@ -701,7 +701,7 @@ async def api_update_review(
 
     body = await request.json()
     updates = []
-    old_verdict: str | None = None
+    audit_transition: tuple[str, str] | None = None
 
     if "verdict" in body:
         new_verdict = body["verdict"]
@@ -716,6 +716,7 @@ async def api_update_review(
         old_verdict = review.verdict
         review.verdict = new_verdict
         updates.append(f"verdict={new_verdict}")
+        audit_transition = (old_verdict, new_verdict)
 
         # Auto-set reviewed_at when transitioning from pending to a decided verdict
         if old_verdict == "pending" and new_verdict != "pending" and "reviewed_at" not in body:
@@ -748,13 +749,13 @@ async def api_update_review(
         updates.append("merged_at set")
 
     if updates:
-        if old_verdict is not None:
+        if audit_transition is not None:
             await write_audit_entry(
                 session,
                 "mr_review",
                 review_id,
-                old_verdict,
-                body["verdict"],
+                audit_transition[0],
+                audit_transition[1],
                 changed_by="api",
                 reason=body.get("reason"),
             )
