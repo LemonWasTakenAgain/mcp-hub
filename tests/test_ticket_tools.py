@@ -16,6 +16,35 @@ from mcp_hub.tools.ticket_tools import (
 )
 
 
+def _scalar_result(value):
+    """Return a mock execute result whose scalar_one() returns value."""
+    r = MagicMock()
+    r.scalar_one.return_value = value
+    return r
+
+
+def _scalar_one_or_none_result(value):
+    """Return a mock execute result whose scalar_one_or_none() returns value."""
+    r = MagicMock()
+    r.scalar_one_or_none.return_value = value
+    return r
+
+
+def _passing_execute_side_effects(extra=None):
+    """Side effects for session.execute that pass all three enforcement checks.
+
+    Order: refile_count=0, dup=None, open_count=0, plus any extra results.
+    """
+    effects = [
+        _scalar_result(0),  # refile count = 0
+        _scalar_one_or_none_result(None),  # no duplicate ticket
+        _scalar_result(0),  # open count = 0
+    ]
+    if extra:
+        effects.extend(extra)
+    return effects
+
+
 def _make_ticket(**overrides) -> Ticket:
     """Create a Ticket instance with sensible defaults."""
     now = datetime.now(UTC)
@@ -58,6 +87,7 @@ def _mock_session():
 @pytest.mark.asyncio
 async def test_create_ticket_success():
     ctx, session = _mock_session()
+    session.execute = AsyncMock(side_effect=_passing_execute_side_effects())
 
     async def fake_refresh(obj):
         obj.id = 42
@@ -101,6 +131,95 @@ async def test_create_ticket_empty_description():
     result = await create_ticket("Fix DNS", "", "Dev Manager", "Infra Worker")
     assert "Error" in result
     assert "description" in result
+
+
+# -- Enforcement: dedupe --
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_dedupe_rejected():
+    """ticket_create rejects a duplicate open ticket filed within the last 10 minutes."""
+    ctx, session = _mock_session()
+    existing = _make_ticket(id=7, title="Fix DNS", status="queued")
+    session.execute = AsyncMock(
+        side_effect=[
+            _scalar_result(0),  # refile count = 0
+            _scalar_one_or_none_result(existing),  # duplicate found
+        ]
+    )
+
+    with patch("mcp_hub.tools.ticket_tools.async_session", return_value=ctx):
+        result = await create_ticket(
+            "Fix DNS", "DNS broken on VLAN 40", "Dev Manager", "Infra Worker"
+        )
+
+    assert "duplicate" in result
+    assert "#7" in result
+    # One TicketLimit audit record added, ticket itself not added
+    session.add.assert_called_once()
+    added_obj = session.add.call_args[0][0]
+    from mcp_hub.models.ticket import TicketLimit
+
+    assert isinstance(added_obj, TicketLimit)
+    assert added_obj.event_type == "dedupe"
+
+
+# -- Enforcement: rate limit --
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_rate_limit_rejected():
+    """ticket_create rejects when from_role already has 10 open tickets."""
+    ctx, session = _mock_session()
+    oldest = _make_ticket(id=3, title="Some old ticket", status="queued")
+    session.execute = AsyncMock(
+        side_effect=[
+            _scalar_result(0),  # refile count = 0
+            _scalar_one_or_none_result(None),  # no duplicate
+            _scalar_result(10),  # open count = 10 (at limit)
+            _scalar_one_or_none_result(oldest),  # oldest open ticket
+        ]
+    )
+
+    with patch("mcp_hub.tools.ticket_tools.async_session", return_value=ctx):
+        result = await create_ticket("New Task", "Something new", "Dev Manager", "Infra Worker")
+
+    assert "rate_limited" in result
+    assert "10" in result
+    assert "#3" in result
+    session.add.assert_called_once()
+    added_obj = session.add.call_args[0][0]
+    from mcp_hub.models.ticket import TicketLimit
+
+    assert isinstance(added_obj, TicketLimit)
+    assert added_obj.event_type == "rate_limit"
+
+
+# -- Enforcement: refile cap --
+
+
+@pytest.mark.asyncio
+async def test_create_ticket_refile_cap_rejected():
+    """ticket_create rejects a 3rd refile of the same title within 1 hour."""
+    ctx, session = _mock_session()
+    session.execute = AsyncMock(
+        side_effect=[
+            _scalar_result(2),  # 2 existing tickets with same title in last hour → reject 3rd
+        ]
+    )
+
+    with patch("mcp_hub.tools.ticket_tools.async_session", return_value=ctx):
+        result = await create_ticket("Fix DNS", "DNS broken again", "Dev Manager", "Infra Worker")
+
+    assert "refile_cap" in result
+    assert "2" in result
+    assert "PR Manager" in result
+    session.add.assert_called_once()
+    added_obj = session.add.call_args[0][0]
+    from mcp_hub.models.ticket import TicketLimit
+
+    assert isinstance(added_obj, TicketLimit)
+    assert added_obj.event_type == "refile_cap"
 
 
 # -- list_tickets tests --

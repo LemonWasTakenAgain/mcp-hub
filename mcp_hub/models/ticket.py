@@ -7,6 +7,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mcp_hub.models.base import Base
 
+# Open statuses — tickets that count toward dedup/rate-limit windows
+OPEN_STATUSES = {"queued", "triaged", "in_progress", "blocked"}
+
 # Valid status transitions
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "queued": {"triaged", "in_progress", "denied", "archived"},
@@ -90,3 +93,18 @@ class TicketComment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     ticket: Mapped["Ticket"] = relationship(back_populates="comments")
+
+
+class TicketLimit(Base):
+    """Audit log for rate-limit, dedupe, and refile-cap enforcement events."""
+
+    __tablename__ = "ticket_limits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # event_type values: dedupe | rate_limit | refile_cap
+    event_type: Mapped[str] = mapped_column(String(20), index=True)
+    from_role: Mapped[str] = mapped_column(String(100), index=True)
+    to_role: Mapped[str] = mapped_column(String(100))
+    title: Mapped[str] = mapped_column(String(255))
+    existing_ticket_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

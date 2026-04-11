@@ -13,19 +13,29 @@ with haiku, and spawns a dedicated agent to fulfill each one.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from mcp_hub.database import async_session
 from mcp_hub.models.audit_log import write_audit_entry
 from mcp_hub.models.ticket import (
+    OPEN_STATUSES,
     VALID_PRIORITIES,
     VALID_ROLES,
     VALID_STATUSES,
     VALID_TRANSITIONS,
     Ticket,
     TicketComment,
+    TicketLimit,
 )
+
+# Enforcement constants
+_DEDUPE_WINDOW_MINUTES = 10
+_RATE_LIMIT_MAX_OPEN = 10
+_REFILE_CAP_WINDOW_HOURS = 1
+_REFILE_CAP_MAX = 2  # reject the 3rd attempt (>= 2 existing within window)
 
 
 async def create_ticket(
@@ -39,6 +49,14 @@ async def create_ticket(
 
     Valid roles and project ownership: ~/projects/homelab/agent-prompts/00-INDEX.md
     Workflow rules: ~/.claude/rules/agent-standards.md (Cross-Agent Ticket System)
+
+    Enforces three server-side guards:
+    - Dedupe: rejects if an open ticket with the same (from_role, to_role, title)
+      was filed within the last 10 minutes.
+    - Rate limit: rejects if from_role already has 10 or more open tickets.
+    - Refile cap: rejects a 3rd ticket with the same (from_role, title) within 1 hour.
+
+    All enforcement events are logged to the ticket_limits audit table.
     """
     if not title.strip():
         return "Error: title cannot be empty"
@@ -51,10 +69,104 @@ async def create_ticket(
     if priority not in VALID_PRIORITIES:
         return f"Error: invalid priority '{priority}'. Valid: high, medium, low"
 
+    title = title.strip()
+    description = description.strip()
+    now = datetime.now(UTC)
+
     async with async_session() as session:
+        # -- 1. Refile cap: refuse 3rd ticket with same (from_role, title) within 1 hour --
+        refile_cutoff = now - timedelta(hours=_REFILE_CAP_WINDOW_HOURS)
+        refile_count_result = await session.execute(
+            select(func.count(Ticket.id)).where(
+                Ticket.from_role == from_role,
+                Ticket.title == title,
+                Ticket.created_at >= refile_cutoff,
+            )
+        )
+        refile_count = refile_count_result.scalar_one()
+        if refile_count >= _REFILE_CAP_MAX:
+            limit_event = TicketLimit(
+                event_type="refile_cap",
+                from_role=from_role,
+                to_role=to_role,
+                title=title,
+            )
+            session.add(limit_event)
+            await session.commit()
+            return (
+                f"Error: refile_cap — '{title}' has been filed {refile_count} time(s) "
+                f"by {from_role} in the last {_REFILE_CAP_WINDOW_HOURS}h. "
+                f"Escalate to PR Manager instead of refiling."
+            )
+
+        # -- 2. Dedupe: reject if open ticket with same (from_role, to_role, title) within 10 min --
+        dedupe_cutoff = now - timedelta(minutes=_DEDUPE_WINDOW_MINUTES)
+        dup_result = await session.execute(
+            select(Ticket).where(
+                Ticket.from_role == from_role,
+                Ticket.to_role == to_role,
+                Ticket.title == title,
+                Ticket.status.in_(OPEN_STATUSES),
+                Ticket.created_at >= dedupe_cutoff,
+            )
+        )
+        dup_ticket = dup_result.scalar_one_or_none()
+        if dup_ticket is not None:
+            limit_event = TicketLimit(
+                event_type="dedupe",
+                from_role=from_role,
+                to_role=to_role,
+                title=title,
+                existing_ticket_id=dup_ticket.id,
+            )
+            session.add(limit_event)
+            await session.commit()
+            return (
+                f"Error: duplicate — ticket #{dup_ticket.id} '{title}' is already open "
+                f"(filed {_DEDUPE_WINDOW_MINUTES} min ago). "
+                f"Poll ticket #{dup_ticket.id} instead of filing a new one."
+            )
+
+        # -- 3. Rate limit: max 10 open tickets from this role --
+        open_count_result = await session.execute(
+            select(func.count(Ticket.id)).where(
+                Ticket.from_role == from_role,
+                Ticket.status.in_(OPEN_STATUSES),
+            )
+        )
+        open_count = open_count_result.scalar_one()
+        if open_count >= _RATE_LIMIT_MAX_OPEN:
+            # Find oldest open ticket from this role to return as the reference
+            oldest_result = await session.execute(
+                select(Ticket)
+                .where(
+                    Ticket.from_role == from_role,
+                    Ticket.status.in_(OPEN_STATUSES),
+                )
+                .order_by(Ticket.created_at.asc())
+                .limit(1)
+            )
+            oldest = oldest_result.scalar_one_or_none()
+            oldest_id = oldest.id if oldest else None
+            limit_event = TicketLimit(
+                event_type="rate_limit",
+                from_role=from_role,
+                to_role=to_role,
+                title=title,
+                existing_ticket_id=oldest_id,
+            )
+            session.add(limit_event)
+            await session.commit()
+            return (
+                f"Error: rate_limited — {from_role} already has {open_count} open tickets "
+                f"(max {_RATE_LIMIT_MAX_OPEN}). "
+                f"Oldest open ticket: #{oldest_id}. Resolve existing tickets before filing new."
+            )
+
+        # -- All checks passed: create the ticket --
         ticket = Ticket(
-            title=title.strip(),
-            description=description.strip(),
+            title=title,
+            description=description,
             from_role=from_role,
             to_role=to_role,
             priority=priority,
