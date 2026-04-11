@@ -276,6 +276,11 @@ async def _sha_drift_reset() -> None:
                     db_review.reviewer_model = None
                     db_review.reviewed_at = None
                     db_review.commit_sha = live_sha
+                    # Backdate updated_at so the dispatcher's 5-min "reviewer running"
+                    # guard (pending_age < 300) doesn't delay re-review. After a SHA
+                    # drift reset there is no reviewer in flight, so the guard doesn't
+                    # apply. The dispatcher will pick this up on its next cycle (~1 min).
+                    db_review.updated_at = datetime.now(UTC) - timedelta(seconds=600)
 
                     session.add(
                         ReviewResetLog(

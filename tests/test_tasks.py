@@ -315,6 +315,11 @@ class TestShaDriftReset:
         assert db_review.details is None
         assert db_review.reviewer_model is None
         assert db_review.reviewed_at is None
+        # updated_at must be backdated so the dispatcher's pending_age guard
+        # (< 300s) doesn't delay re-review — the reset is immediate.
+        from datetime import UTC, datetime, timedelta
+
+        assert db_review.updated_at < datetime.now(UTC) - timedelta(seconds=300)
         mock_audit.assert_called_once()
         call_args = mock_audit.call_args
         assert call_args.args[1] == "mr_review"
@@ -431,3 +436,6 @@ class TestShaDriftReset:
 
         assert db_review.verdict == "pending"
         assert db_review.commit_sha == "new_rebased_sha"
+        from datetime import UTC, datetime, timedelta
+
+        assert db_review.updated_at < datetime.now(UTC) - timedelta(seconds=300)
