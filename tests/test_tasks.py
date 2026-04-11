@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from mcp_hub.models.mr_review import MrReview
-from mcp_hub.tasks import _orphan_review_sweep, _stale_ticket_sweep
+from mcp_hub.tasks import _orphan_review_sweep, _sha_drift_reset, _stale_ticket_sweep
 
 
 def _make_ticket(**overrides):
@@ -249,3 +249,185 @@ class TestApiUpdateReviewAudit:
 
         assert result == {"id": 2, "updated": ["reason updated"]}
         mock_audit.assert_not_called()
+
+
+class TestShaDriftReset:
+    """_sha_drift_reset must reset non-pending verdicts when commit SHA changes."""
+
+    def _make_candidate(self, **overrides) -> MagicMock:
+        defaults = {
+            "id": 1,
+            "project_id": 5,
+            "mr_iid": 124,
+            "verdict": "approved",
+            "commit_sha": "65db467abc123",
+            "reason": "Looks good",
+            "details": "All checks pass",
+            "reviewer_model": "sonnet",
+            "reviewed_at": datetime.now(UTC) - timedelta(hours=1),
+        }
+        defaults.update(overrides)
+        obj = MagicMock()
+        for k, v in defaults.items():
+            setattr(obj, k, v)
+        return obj
+
+    def _mock_session(self) -> tuple:
+        session = AsyncMock()
+        ctx = AsyncMock()
+        ctx.__aenter__ = AsyncMock(return_value=session)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx, session
+
+    @pytest.mark.asyncio
+    async def test_resets_approved_on_sha_change(self):
+        """Approved MR with a new live SHA must be reset to pending."""
+        ctx, session = self._mock_session()
+        candidate = self._make_candidate(verdict="approved", commit_sha="old_sha_111")
+        db_review = self._make_candidate(verdict="approved", commit_sha="old_sha_111")
+
+        candidates_result = MagicMock()
+        candidates_result.scalars.return_value.all.return_value = [candidate]
+        session.execute = AsyncMock(return_value=candidates_result)
+        session.get = AsyncMock(return_value=db_review)
+
+        live_mr_resp = MagicMock()
+        live_mr_resp.status_code = 200
+        live_mr_resp.json.return_value = {"state": "opened", "sha": "new_sha_999"}
+
+        with (
+            patch("mcp_hub.tasks.async_session", return_value=ctx),
+            patch("mcp_hub.tasks.settings", gitlab_token="test", gitlab_url="https://gitlab.test"),
+            patch("mcp_hub.tasks.write_audit_entry", new_callable=AsyncMock) as mock_audit,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=live_mr_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await _sha_drift_reset()
+
+        assert db_review.verdict == "pending"
+        assert db_review.commit_sha == "new_sha_999"
+        assert db_review.reason is None
+        assert db_review.details is None
+        assert db_review.reviewer_model is None
+        assert db_review.reviewed_at is None
+        mock_audit.assert_called_once()
+        call_args = mock_audit.call_args
+        assert call_args.args[1] == "mr_review"
+        assert call_args.args[3] == "approved"
+        assert call_args.args[4] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_skips_when_sha_unchanged(self):
+        """MR with same live SHA must not be reset."""
+        ctx, session = self._mock_session()
+        same_sha = "abc123def456"
+        candidate = self._make_candidate(verdict="approved", commit_sha=same_sha)
+
+        candidates_result = MagicMock()
+        candidates_result.scalars.return_value.all.return_value = [candidate]
+        session.execute = AsyncMock(return_value=candidates_result)
+
+        live_mr_resp = MagicMock()
+        live_mr_resp.status_code = 200
+        live_mr_resp.json.return_value = {"state": "opened", "sha": same_sha}
+
+        with (
+            patch("mcp_hub.tasks.async_session", return_value=ctx),
+            patch("mcp_hub.tasks.settings", gitlab_token="test", gitlab_url="https://gitlab.test"),
+            patch("mcp_hub.tasks.write_audit_entry", new_callable=AsyncMock) as mock_audit,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=live_mr_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await _sha_drift_reset()
+
+        session.get.assert_not_called()
+        mock_audit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_merged_mr_state(self):
+        """MR in merged state on GitLab must not be reset (orphan sweep handles it)."""
+        ctx, session = self._mock_session()
+        candidate = self._make_candidate(verdict="approved", commit_sha="old_sha")
+
+        candidates_result = MagicMock()
+        candidates_result.scalars.return_value.all.return_value = [candidate]
+        session.execute = AsyncMock(return_value=candidates_result)
+
+        live_mr_resp = MagicMock()
+        live_mr_resp.status_code = 200
+        live_mr_resp.json.return_value = {"state": "merged", "sha": "new_sha_999"}
+
+        with (
+            patch("mcp_hub.tasks.async_session", return_value=ctx),
+            patch("mcp_hub.tasks.settings", gitlab_token="test", gitlab_url="https://gitlab.test"),
+            patch("mcp_hub.tasks.write_audit_entry", new_callable=AsyncMock) as mock_audit,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=live_mr_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await _sha_drift_reset()
+
+        session.get.assert_not_called()
+        mock_audit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_without_gitlab_token(self):
+        """Task must return early when no GitLab token is configured."""
+        ctx, session = self._mock_session()
+
+        with (
+            patch("mcp_hub.tasks.async_session", return_value=ctx),
+            patch("mcp_hub.tasks.settings", gitlab_token="", gitlab_url="https://gitlab.test"),
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            await _sha_drift_reset()
+
+        session.execute.assert_not_called()
+        mock_client_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_resets_rejected_on_sha_change(self):
+        """Rejected MR with new SHA must also be reset to pending."""
+        ctx, session = self._mock_session()
+        candidate = self._make_candidate(verdict="rejected", commit_sha="old_rejected_sha")
+        db_review = self._make_candidate(verdict="rejected", commit_sha="old_rejected_sha")
+
+        candidates_result = MagicMock()
+        candidates_result.scalars.return_value.all.return_value = [candidate]
+        session.execute = AsyncMock(return_value=candidates_result)
+        session.get = AsyncMock(return_value=db_review)
+
+        live_mr_resp = MagicMock()
+        live_mr_resp.status_code = 200
+        live_mr_resp.json.return_value = {"state": "opened", "sha": "new_rebased_sha"}
+
+        with (
+            patch("mcp_hub.tasks.async_session", return_value=ctx),
+            patch("mcp_hub.tasks.settings", gitlab_token="test", gitlab_url="https://gitlab.test"),
+            patch("mcp_hub.tasks.write_audit_entry", new_callable=AsyncMock),
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=live_mr_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await _sha_drift_reset()
+
+        assert db_review.verdict == "pending"
+        assert db_review.commit_sha == "new_rebased_sha"

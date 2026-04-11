@@ -12,7 +12,7 @@ from sqlalchemy import select
 from mcp_hub.config import settings
 from mcp_hub.database import async_session
 from mcp_hub.models.audit_log import write_audit_entry
-from mcp_hub.models.mr_review import MrReview
+from mcp_hub.models.mr_review import MrReview, ReviewResetLog
 from mcp_hub.models.ticket import Ticket, TicketComment
 
 logger = logging.getLogger("mcp_hub.tasks")
@@ -207,6 +207,116 @@ async def _orphan_review_sweep() -> None:
                 )
 
 
+async def _sha_drift_reset() -> None:
+    """Reset verdict to pending when a force-push has changed the MR's commit SHA.
+
+    The dispatcher skips 'approved' MRs unconditionally, so a force-push after
+    approval leaves the MR permanently locked out of auto-merge. This task catches
+    all non-terminal, non-pending reviews whose stored commit_sha no longer matches
+    the live SHA on GitLab and resets them to pending so the dispatcher triggers a
+    fresh review within one cycle.
+    """
+    if not settings.gitlab_token:
+        logger.debug("SHA drift reset skipped: no GitLab token configured")
+        return
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(MrReview).where(
+                MrReview.verdict.in_(["approved", "rejected", "needs_human"]),
+                MrReview.commit_sha.is_not(None),
+            )
+        )
+        candidates = result.scalars().all()
+
+    if not candidates:
+        return
+
+    headers = {"PRIVATE-TOKEN": settings.gitlab_token}
+    gitlab_base = settings.gitlab_url.rstrip("/")
+
+    reset_count = 0
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for review in candidates:
+            try:
+                url = (
+                    f"{gitlab_base}/api/v4/projects/{review.project_id}"
+                    f"/merge_requests/{review.mr_iid}"
+                )
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 404:
+                    continue  # MR deleted — orphan sweep handles this
+                if resp.status_code != 200:
+                    continue
+
+                data = resp.json()
+                if data.get("state", "") in ("merged", "closed"):
+                    continue  # Terminal — orphan sweep handles this
+
+                live_sha = data.get("sha", "")
+                if not live_sha or live_sha == review.commit_sha:
+                    continue  # No drift
+
+                # SHA changed — reset to pending for fresh review
+                async with async_session() as session:
+                    db_review = await session.get(MrReview, review.id)
+                    if db_review is None or db_review.verdict not in (
+                        "approved",
+                        "rejected",
+                        "needs_human",
+                    ):
+                        continue  # Already reset by a concurrent operation
+
+                    old_verdict = db_review.verdict
+                    old_sha = db_review.commit_sha
+
+                    db_review.verdict = "pending"
+                    db_review.reason = None
+                    db_review.details = None
+                    db_review.reviewer_model = None
+                    db_review.reviewed_at = None
+                    db_review.commit_sha = live_sha
+
+                    session.add(
+                        ReviewResetLog(
+                            review_id=db_review.id,
+                            old_verdict=old_verdict,
+                            old_commit_sha=old_sha,
+                            new_commit_sha=live_sha,
+                            reason="sha-drift-reset: force-push detected",
+                        )
+                    )
+                    await write_audit_entry(
+                        session,
+                        "mr_review",
+                        db_review.id,
+                        old_verdict,
+                        "pending",
+                        changed_by="sha_drift_reset",
+                        reason=f"sha-drift: {old_sha or 'unknown'}→{live_sha}",
+                    )
+                    await session.commit()
+                    reset_count += 1
+                    logger.info(
+                        "SHA drift reset: PID=%d !%d verdict %s→pending (sha %s→%s)",
+                        review.project_id,
+                        review.mr_iid,
+                        old_verdict,
+                        (old_sha or "")[:8],
+                        live_sha[:8],
+                    )
+            except Exception as e:
+                logger.warning(
+                    "SHA drift reset error for PID=%d !%d: %s",
+                    review.project_id,
+                    review.mr_iid,
+                    e,
+                )
+
+    if reset_count:
+        logger.info("SHA drift reset: %d review(s) reset to pending", reset_count)
+
+
 async def run_periodic(func, interval_seconds: int, name: str) -> None:
     """Run func periodically on a fixed interval."""
     logger.info("Starting periodic task '%s' every %ds", name, interval_seconds)
@@ -232,6 +342,10 @@ def start_background_tasks() -> list[asyncio.Task]:
         asyncio.create_task(
             run_periodic(_orphan_review_sweep, interval_seconds=86400, name="orphan_review_sweep"),
             name="orphan_review_sweep",
+        ),
+        asyncio.create_task(
+            run_periodic(_sha_drift_reset, interval_seconds=60, name="sha_drift_reset"),
+            name="sha_drift_reset",
         ),
     ]
     return tasks
