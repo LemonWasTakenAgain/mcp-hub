@@ -405,6 +405,52 @@ class TestShaDriftReset:
         mock_client_cls.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_resets_needs_human_with_null_commit_sha(self):
+        """needs_human review with NULL commit_sha must be reset when MR is still open.
+
+        Regression: review 91 (PID22 !7) had verdict=needs_human and commit_sha=None.
+        The old query excluded NULL commit_sha rows, so the review was never reset.
+        """
+        ctx, session = self._mock_session()
+        candidate = self._make_candidate(verdict="needs_human", commit_sha=None)
+        db_review = self._make_candidate(verdict="needs_human", commit_sha=None)
+
+        candidates_result = MagicMock()
+        candidates_result.scalars.return_value.all.return_value = [candidate]
+        session.execute = AsyncMock(return_value=candidates_result)
+        session.get = AsyncMock(return_value=db_review)
+
+        live_mr_resp = MagicMock()
+        live_mr_resp.status_code = 200
+        live_mr_resp.json.return_value = {"state": "opened", "sha": "current_sha_abc"}
+
+        with (
+            patch("mcp_hub.tasks.async_session", return_value=ctx),
+            patch("mcp_hub.tasks.settings", gitlab_token="test", gitlab_url="https://gitlab.test"),
+            patch("mcp_hub.tasks.write_audit_entry", new_callable=AsyncMock) as mock_audit,
+            patch("httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=live_mr_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await _sha_drift_reset()
+
+        assert db_review.verdict == "pending"
+        assert db_review.commit_sha == "current_sha_abc"
+        assert db_review.reason is None
+        assert db_review.details is None
+        assert db_review.reviewer_model is None
+        assert db_review.reviewed_at is None
+        assert db_review.updated_at < datetime.now(UTC) - timedelta(seconds=300)
+        mock_audit.assert_called_once()
+        call_args = mock_audit.call_args
+        assert call_args.args[3] == "needs_human"
+        assert call_args.args[4] == "pending"
+
+    @pytest.mark.asyncio
     async def test_resets_rejected_on_sha_change(self):
         """Rejected MR with new SHA must also be reset to pending."""
         ctx, session = self._mock_session()

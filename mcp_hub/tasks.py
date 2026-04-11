@@ -224,7 +224,6 @@ async def _sha_drift_reset() -> None:
         result = await session.execute(
             select(MrReview).where(
                 MrReview.verdict.in_(["approved", "rejected", "needs_human"]),
-                MrReview.commit_sha.is_not(None),
             )
         )
         candidates = result.scalars().all()
