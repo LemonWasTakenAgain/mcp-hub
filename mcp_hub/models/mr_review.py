@@ -16,13 +16,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from mcp_hub.models.base import Base
 
-VALID_VERDICTS = {"pending", "approved", "rejected", "needs_human", "merged"}
+VALID_VERDICTS = {"pending", "approved", "rejected", "needs_human", "merged", "closed"}
 VERDICT_TRANSITIONS: dict[str, set[str]] = {
     "pending": {"approved", "rejected", "needs_human"},
     "approved": {"merged"},
     "rejected": {"pending", "approved", "merged"},  # re-review after fix, or direct merge
     "needs_human": {"approved", "rejected", "pending"},  # human decides
-    "merged": set(),  # terminal
+    "merged": set(),  # terminal — MR was merged
+    "closed": set(),  # terminal — MR was closed/abandoned without merging
 }
 
 
@@ -31,7 +32,7 @@ class MrReview(Base):
     __table_args__ = (
         UniqueConstraint("project_id", "mr_iid", name="uq_review_project_mr"),
         CheckConstraint(
-            "verdict IN ('pending', 'approved', 'rejected', 'needs_human', 'merged')",
+            "verdict IN ('pending', 'approved', 'rejected', 'needs_human', 'merged', 'closed')",
             name="ck_review_verdict",
         ),
     )

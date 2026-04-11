@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import time
 from contextlib import asynccontextmanager
-from datetime import UTC
+from datetime import UTC, timedelta
 from datetime import datetime as dt
 from pathlib import Path
 
@@ -13,12 +15,13 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
 from mcp_hub.config import settings
-from mcp_hub.database import engine, get_session
+from mcp_hub.database import async_session, engine, get_session
 from mcp_hub.mcp_server import get_registered_tools, get_tool_names, mcp
 from mcp_hub.metrics import (
     REQUEST_ERRORS,
@@ -29,6 +32,8 @@ from mcp_hub.metrics import (
     metrics_endpoint,
 )
 from mcp_hub.models import Base, MrCanaryRun, MrReview, ReviewResetLog, Ticket, ToolLog
+from mcp_hub.models.audit_log import write_audit_entry
+from mcp_hub.models.idempotency import IdempotencyRecord
 from mcp_hub.models.mr_review import VALID_VERDICTS, VERDICT_TRANSITIONS
 from mcp_hub.models.ticket import VALID_STATUSES, VALID_TRANSITIONS
 from mcp_hub.proxy.env_resolver import resolve_registry
@@ -103,7 +108,21 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Proxy disabled (set MH_PROXY_ENABLED=true to enable)")
 
+    # Start background maintenance tasks
+    from mcp_hub.tasks import start_background_tasks
+
+    _bg_tasks: list[asyncio.Task] = start_background_tasks()
+    logger.info("Started %d background maintenance tasks", len(_bg_tasks))
+
     yield
+
+    # Cancel background tasks
+    for t in _bg_tasks:
+        t.cancel()
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
     if proxy_manager:
         await proxy_manager.stop()
@@ -142,6 +161,56 @@ async def security_and_metrics(request: Request, call_next) -> Response:
     )
     if response.status_code >= 400:
         REQUEST_ERRORS.labels(method=request.method, endpoint=endpoint, status=status).inc()
+
+    return response
+
+
+@app.middleware("http")
+async def idempotency_middleware(request: Request, call_next):
+    """Replay cached response for duplicate PATCH/POST with Idempotency-Key header."""
+    idem_key = request.headers.get("Idempotency-Key", "").strip()
+    path = request.url.path
+    method = request.method
+
+    # Only apply to mutation endpoints
+    is_mutation = method in ("PATCH", "POST") and (
+        path.startswith("/api/tickets") or path.startswith("/api/reviews")
+    )
+
+    if not idem_key or not is_mutation:
+        return await call_next(request)
+
+    # Check cache
+    async with async_session() as session:
+        existing = await session.get(IdempotencyRecord, idem_key)
+        if existing:
+            return JSONResponse(content=json.loads(existing.response_json), status_code=200)
+
+    # Process request
+    response = await call_next(request)
+
+    # Cache the response if successful (2xx)
+    if 200 <= response.status_code < 300:
+        body_bytes = b""
+        async for chunk in response.body_iterator:
+            body_bytes += chunk
+        try:
+            body_dict = json.loads(body_bytes)
+        except Exception:
+            body_dict = {}
+        async with async_session() as session:
+            # Cleanup old keys (>24h) opportunistically
+            cutoff = dt.now(UTC) - timedelta(hours=24)
+            await session.execute(
+                sa_delete(IdempotencyRecord).where(IdempotencyRecord.created_at < cutoff)
+            )
+            record = IdempotencyRecord(key=idem_key, response_json=json.dumps(body_dict))
+            session.add(record)
+            try:
+                await session.commit()
+            except Exception:
+                await session.rollback()
+        return JSONResponse(content=body_dict, status_code=response.status_code)
 
     return response
 
@@ -419,6 +488,7 @@ async def api_update_ticket(
     body = await request.json()
     updates = []
 
+    old_status: str | None = None
     if "status" in body:
         new_status = body["status"]
         if new_status not in VALID_STATUSES:
@@ -429,6 +499,7 @@ async def api_update_ticket(
                 {"error": f"Cannot transition from '{ticket.status}' to '{new_status}'"},
                 status_code=400,
             )
+        old_status = ticket.status
         ticket.status = new_status
         updates.append(f"status={new_status}")
 
@@ -444,6 +515,10 @@ async def api_update_ticket(
             updates.append(f"{field} updated")
 
     if updates:
+        if old_status is not None:
+            await write_audit_entry(
+                session, "ticket", ticket_id, old_status, ticket.status, changed_by="api"
+            )
         await session.commit()
 
     return {"id": ticket_id, "updated": updates}
@@ -590,14 +665,25 @@ async def api_create_review(request: Request, session: AsyncSession = Depends(ge
     was_update = old_row is not None
 
     if was_update and old_row.verdict not in ("pending", None):
+        old_commit = old_row.commit_sha
+        new_commit = body.get("commit_sha", "unknown")
         session.add(
             ReviewResetLog(
                 review_id=result.id,
                 old_verdict=old_row.verdict,
-                old_commit_sha=old_row.commit_sha,
+                old_commit_sha=old_commit,
                 new_commit_sha=body.get("commit_sha"),
                 reason="push-reset: new commit triggered re-review",
             )
+        )
+        await write_audit_entry(
+            session,
+            "mr_review",
+            result.id,
+            old_row.verdict,
+            "pending",
+            changed_by="api",
+            reason=f"new-commit-{old_commit or 'unknown'}→{new_commit}",
         )
 
     await session.commit()
@@ -615,6 +701,7 @@ async def api_update_review(
 
     body = await request.json()
     updates = []
+    old_verdict: str | None = None
 
     if "verdict" in body:
         new_verdict = body["verdict"]
@@ -661,6 +748,16 @@ async def api_update_review(
         updates.append("merged_at set")
 
     if updates:
+        if old_verdict is not None:
+            await write_audit_entry(
+                session,
+                "mr_review",
+                review_id,
+                old_verdict,
+                body["verdict"],
+                changed_by="api",
+                reason=body.get("reason"),
+            )
         await session.commit()
 
     return {"id": review_id, "updated": updates}
