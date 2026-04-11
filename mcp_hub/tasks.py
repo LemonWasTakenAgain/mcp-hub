@@ -18,8 +18,16 @@ from mcp_hub.models.ticket import Ticket, TicketComment
 logger = logging.getLogger("mcp_hub.tasks")
 
 
+_SWEEP_MARKER = "[auto-sweep ticket_id={ticket_id}]"
+
+
 async def _stale_ticket_sweep() -> None:
-    """Flag tickets stuck in_progress for >24h and file a PR Manager ticket."""
+    """Flag tickets stuck in_progress for >24h and file a PR Manager triage ticket.
+
+    Dedup: a triage ticket is only created once per stale ticket. The description
+    is prefixed with `[auto-sweep ticket_id=N]` so subsequent runs can detect that
+    one already exists and skip re-filing.
+    """
     cutoff = datetime.now(UTC) - timedelta(hours=24)
     async with async_session() as session:
         result = await session.execute(
@@ -32,14 +40,35 @@ async def _stale_ticket_sweep() -> None:
         if not stale:
             return
 
+        filed = 0
         for ticket in stale:
             logger.warning(
                 "Stale ticket #%d: stuck in_progress since %s", ticket.id, ticket.updated_at
             )
-            # Create a PR Manager triage ticket
+
+            # Dedup: skip if a triage ticket for this stale ticket was already filed.
+            marker = _SWEEP_MARKER.format(ticket_id=ticket.id)
+            existing_triage = (
+                await session.execute(
+                    select(Ticket).where(
+                        Ticket.description.like(f"{marker}%"),
+                        Ticket.status.notin_(["denied", "archived"]),
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_triage:
+                logger.debug(
+                    "Stale sweep: triage ticket #%d already exists for ticket #%d, skipping",
+                    existing_triage.id,
+                    ticket.id,
+                )
+                continue
+
+            # Create a PR Manager triage ticket (once per stale ticket)
             triage = Ticket(
                 title=f"Stale ticket triage: #{ticket.id}",
                 description=(
+                    f"{marker}\n"
                     f"Ticket #{ticket.id} ('{ticket.title}') has been in_progress since "
                     f"{ticket.updated_at.isoformat()} (>{24}h). "
                     f"Assigned to: {ticket.model_assigned or 'unknown'}. "
@@ -52,6 +81,7 @@ async def _stale_ticket_sweep() -> None:
                 status="queued",
             )
             session.add(triage)
+            filed += 1
 
             # Add a comment noting the stale detection
             comment = TicketComment(
@@ -65,9 +95,12 @@ async def _stale_ticket_sweep() -> None:
             )
             session.add(comment)
 
-        await session.commit()
+        if filed:
+            await session.commit()
         logger.info(
-            "Stale sweep: flagged %d tickets, filed %d triage tickets", len(stale), len(stale)
+            "Stale sweep: %d stale tickets checked, %d triage tickets filed",
+            len(stale),
+            filed,
         )
 
 
@@ -101,7 +134,12 @@ async def _archive_old_tickets() -> None:
 
 
 async def _orphan_review_sweep() -> None:
-    """Check non-merged reviews against GitLab; update state for closed/deleted MRs."""
+    """Check non-terminal reviews against GitLab; update state for closed/merged/deleted MRs.
+
+    Uses distinct terminal states:
+    - "merged"  — GitLab MR was merged
+    - "closed"  — GitLab MR was closed/abandoned or deleted (not merged)
+    """
     if not settings.gitlab_token:
         logger.debug("Orphan sweep skipped: no GitLab token configured")
         return
@@ -110,7 +148,7 @@ async def _orphan_review_sweep() -> None:
     async with async_session() as session:
         result = await session.execute(
             select(MrReview).where(
-                MrReview.verdict.notin_(["merged"]),
+                MrReview.verdict.notin_(["merged", "closed"]),
                 MrReview.updated_at < cutoff,
             )
         )
@@ -136,28 +174,31 @@ async def _orphan_review_sweep() -> None:
                     gl_state = resp.json().get("state", "unknown")
 
                 if gl_state in ("closed", "merged", "deleted"):
+                    # "merged" on GitLab → our "merged"; closed/deleted → our "closed"
+                    new_verdict = "merged" if gl_state == "merged" else "closed"
                     async with async_session() as session:
                         db_review = await session.get(MrReview, review.id)
-                        if db_review and db_review.verdict not in ("merged",):
+                        if db_review and db_review.verdict not in ("merged", "closed"):
                             old_verdict = db_review.verdict
-                            db_review.verdict = "merged"
-                            if gl_state == "merged":
+                            db_review.verdict = new_verdict
+                            if new_verdict == "merged":
                                 db_review.merged_at = datetime.now(UTC)
                             await write_audit_entry(
                                 session,
                                 "mr_review",
                                 db_review.id,
                                 old_verdict,
-                                "merged",
+                                new_verdict,
                                 changed_by="orphan_sweep",
                                 reason=f"GitLab MR state={gl_state}",
                             )
                             await session.commit()
                             logger.info(
-                                "Orphan sweep: PID=%d !%d verdict %s→merged (gl=%s)",
+                                "Orphan sweep: PID=%d !%d verdict %s→%s (gl=%s)",
                                 review.project_id,
                                 review.mr_iid,
                                 old_verdict,
+                                new_verdict,
                                 gl_state,
                             )
             except Exception as e:

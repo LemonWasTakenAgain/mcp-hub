@@ -1,6 +1,6 @@
 """MR review tools for agents to check merge request status.
 
-Verdict lifecycle: pending → approved/rejected/needs_human → merged
+Verdict lifecycle: pending → approved/rejected/needs_human → merged/closed
 
 Review contract:
 - Automated reviewer checks are defined in ~/.claude/rules/pr-standards.md
@@ -78,7 +78,7 @@ async def list_reviews(
 async def get_review(project_id: int, mr_iid: int) -> str:
     """Get full review details for a specific MR.
 
-    Verdict lifecycle: pending → approved/rejected/needs_human → merged
+    Verdict lifecycle: pending → approved/rejected/needs_human → merged/closed
     Review contract: ~/.claude/rules/pr-standards.md
     """
     async with async_session() as session:
@@ -129,7 +129,7 @@ async def get_review(project_id: int, mr_iid: int) -> str:
 
 
 async def my_mrs(author_role: str) -> str:
-    """List all open (non-merged) MR reviews for a specific agent role.
+    """List all open (non-terminal) MR reviews for a specific agent role.
 
     Role → project ownership: ~/projects/homelab/agent-prompts/00-INDEX.md
     Review contract: ~/.claude/rules/pr-standards.md
@@ -139,7 +139,7 @@ async def my_mrs(author_role: str) -> str:
             select(MrReview)
             .where(
                 MrReview.author_role == author_role,
-                MrReview.verdict != "merged",
+                MrReview.verdict.notin_(["merged", "closed"]),
             )
             .order_by(MrReview.updated_at.desc())
             .limit(20)
