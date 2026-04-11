@@ -50,6 +50,7 @@ class MrReview(Base):
     lines_changed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     commit_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
     mr_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    rebase_ticket_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
