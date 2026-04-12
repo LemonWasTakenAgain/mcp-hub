@@ -13,7 +13,7 @@ class TestValidateHostname:
         assert validate_hostname("192.168.1.1") == "192.168.1.1"
 
     def test_valid_subdomain(self):
-        assert validate_hostname("gitlab.steelcanvas.studio") == "gitlab.steelcanvas.studio"
+        assert validate_hostname("gitlab.steelcanvas.dev") == "gitlab.steelcanvas.dev"
 
     def test_valid_hyphen(self):
         assert validate_hostname("my-server-01") == "my-server-01"

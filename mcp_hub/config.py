@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     db_pool_recycle: int = 3600
 
     # GitLab
-    gitlab_url: str = "http://gitlab.steelcanvas.studio"
+    gitlab_url: str = "http://gitlab.steelcanvas.dev"
     gitlab_token: str = ""
 
     # Kubernetes
