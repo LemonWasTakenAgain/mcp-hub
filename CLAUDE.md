@@ -6,11 +6,11 @@ Internal MCP gateway that aggregates 30+ upstream MCP servers through a single S
 endpoint. Python 3.11 + FastAPI + MCP Python SDK (FastMCP). PostgreSQL backend with
 Alembic migrations. Node.js runtime for npx-based upstream servers.
 
-- GitLab: https://gitlab.steelcanvas.studio/infrastructure/mcp-hub
+- GitLab: https://gitlab.steelcanvas.dev/infrastructure/mcp-hub
 - GitLab Project ID: 10
 - GitHub: https://github.com/LemonWasTakenAgain/mcp-hub
-- Dashboard: http://mcp-hub.steelcanvas.studio (port 8500)
-- MCP SSE: http://mcp-hub.steelcanvas.studio/mcp/sse
+- Dashboard: http://mcp-hub.steelcanvas.dev (port 8500)
+- MCP SSE: http://mcp-hub.steelcanvas.dev/mcp/sse
 
 ## Commands
 

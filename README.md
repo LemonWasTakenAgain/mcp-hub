@@ -46,7 +46,7 @@ Add to Claude Code `settings.json`:
   "mcpServers": {
     "mcp-hub": {
       "type": "sse",
-      "url": "http://mcp-hub.steelcanvas.studio/mcp/sse"
+      "url": "http://mcp-hub.steelcanvas.dev/mcp/sse"
     }
   }
 }

@@ -22,7 +22,7 @@ from mcp_hub.tools import (
 
 # Allow the MCP Hub hostname for DNS rebinding protection
 _allowed_hosts = ["localhost", "localhost:8500", "127.0.0.1:8500", "192.168.1.40:8500"]
-_default_hosts = "mcp-hub.steelcanvas.studio,mcp.steelcanvas.studio"
+_default_hosts = "mcp-hub.steelcanvas.dev,mcp.steelcanvas.dev"
 for _host in os.environ.get("MH_ALLOWED_HOSTS", _default_hosts).split(","):
     _host = _host.strip()
     if _host:

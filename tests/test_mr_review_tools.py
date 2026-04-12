@@ -26,7 +26,7 @@ def _make_review(**overrides) -> MrReview:
         "reviewer_model": None,
         "lines_changed": 150,
         "commit_sha": "abc12345",
-        "mr_url": "https://gitlab.steelcanvas.studio/infrastructure/mcp-hub/-/merge_requests/31",
+        "mr_url": "https://gitlab.steelcanvas.dev/infrastructure/mcp-hub/-/merge_requests/31",
         "created_at": now,
         "updated_at": now,
         "reviewed_at": None,
@@ -169,7 +169,7 @@ async def test_get_review_with_merge_info():
     review = _make_review(
         verdict="merged",
         merged_at=datetime.now(UTC),
-        mr_url="https://gitlab.steelcanvas.studio/test/-/merge_requests/1",
+        mr_url="https://gitlab.steelcanvas.dev/test/-/merge_requests/1",
     )
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = review
