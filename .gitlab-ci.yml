@@ -129,14 +129,22 @@ build:docker:
       mkdir -p /kaniko/.docker
       echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf "%s:%s" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
   script:
-    - /kaniko/executor
-      --context $CI_PROJECT_DIR
-      --dockerfile $CI_PROJECT_DIR/Dockerfile
-      --build-arg PYTHON_BASE=$PYTHON_BASE
-      --destination $IMAGE_TAG
-      --destination $IMAGE_LATEST
-      --skip-tls-verify
-      --cache=true
+    - |
+      MIRROR_ARGS=""
+      if [ -n "$DOCKERHUB_MIRROR" ]; then
+        MIRROR="${DOCKERHUB_MIRROR#http://}"
+        MIRROR="${MIRROR#https://}"
+        MIRROR_ARGS="--registry-mirror=${MIRROR} --insecure-registry=${MIRROR}"
+      fi
+      /kaniko/executor \
+        --context $CI_PROJECT_DIR \
+        --dockerfile $CI_PROJECT_DIR/Dockerfile \
+        --build-arg PYTHON_BASE=$PYTHON_BASE \
+        --destination $IMAGE_TAG \
+        --destination $IMAGE_LATEST \
+        --skip-tls-verify \
+        --cache=true \
+        $MIRROR_ARGS
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_PIPELINE_SOURCE == "web"
