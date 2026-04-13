@@ -26,7 +26,6 @@ VALID_PRIORITIES = {"high", "medium", "low"}
 VALID_ROLES = {
     "Dev Manager",
     "Infra Planner",
-    "Infra Worker",
     "SaaS Dev 1",
     "Stock Matrix Dev",
     "Dashboard Dev",
@@ -34,6 +33,7 @@ VALID_ROLES = {
     "AaaS Dev",
     "Marketing Dev",
     "DR Engineer",
+    "Agent Dash Dev",
 }
 
 
@@ -77,9 +77,9 @@ class TicketComment(Base):
     __tablename__ = "ticket_comments"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('Dev Manager', 'Infra Planner', 'Infra Worker', 'SaaS Dev 1', "
+            "role IN ('Dev Manager', 'Infra Planner', 'SaaS Dev 1', "
             "'Stock Matrix Dev', 'Dashboard Dev', 'PR Manager', 'AaaS Dev', "
-            "'Marketing Dev', 'DR Engineer')",
+            "'Marketing Dev', 'DR Engineer', 'Agent Dash Dev')",
             name="ck_comment_role",
         ),
     )

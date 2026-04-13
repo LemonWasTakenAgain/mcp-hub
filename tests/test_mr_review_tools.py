@@ -18,7 +18,7 @@ def _make_review(**overrides) -> MrReview:
         "mr_iid": 31,
         "title": "Add ticket queue system",
         "source_branch": "feat/ticket-queue",
-        "author_role": "Infra Worker",
+        "author_role": "Infra Planner",
         "pipeline_status": "success",
         "verdict": "pending",
         "reason": None,
@@ -192,8 +192,8 @@ async def test_my_mrs_empty():
     session.execute = AsyncMock(return_value=mock_result)
 
     with patch("mcp_hub.tools.mr_review_tools.async_session", return_value=cm):
-        result = await my_mrs("Infra Worker")
-    assert "No open MRs for Infra Worker" in result
+        result = await my_mrs("Infra Planner")
+    assert "No open MRs for Infra Planner" in result
 
 
 @pytest.mark.asyncio
@@ -208,8 +208,8 @@ async def test_my_mrs_with_results():
     session.execute = AsyncMock(return_value=mock_result)
 
     with patch("mcp_hub.tools.mr_review_tools.async_session", return_value=cm):
-        result = await my_mrs("Infra Worker")
-    assert "Open MRs for Infra Worker" in result
+        result = await my_mrs("Infra Planner")
+    assert "Open MRs for Infra Planner" in result
     assert "Add health probes" in result
     assert "Fix bug" in result
     assert "Lint failures" in result

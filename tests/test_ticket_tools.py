@@ -53,7 +53,7 @@ def _make_ticket(**overrides) -> Ticket:
         "title": "Fix DNS resolution",
         "description": "DNS is broken on VLAN 40",
         "from_role": "Dev Manager",
-        "to_role": "Infra Worker",
+        "to_role": "Infra Planner",
         "priority": "medium",
         "status": "queued",
         "model_assigned": None,
@@ -96,7 +96,7 @@ async def test_create_ticket_success():
 
     with patch("mcp_hub.tools.ticket_tools.async_session", return_value=ctx):
         result = await create_ticket(
-            "Fix DNS", "DNS broken on VLAN 40", "Dev Manager", "Infra Worker", "high"
+            "Fix DNS", "DNS broken on VLAN 40", "Dev Manager", "Infra Planner", "high"
         )
     assert "Ticket #42 created" in result
     assert "Fix DNS" in result
@@ -107,28 +107,28 @@ async def test_create_ticket_success():
 
 @pytest.mark.asyncio
 async def test_create_ticket_invalid_role():
-    result = await create_ticket("Fix DNS", "broken", "Nobody", "Infra Worker")
+    result = await create_ticket("Fix DNS", "broken", "Nobody", "Infra Planner")
     assert "Error" in result
     assert "invalid from_role" in result
 
 
 @pytest.mark.asyncio
 async def test_create_ticket_invalid_priority():
-    result = await create_ticket("Fix DNS", "broken", "Dev Manager", "Infra Worker", "urgent")
+    result = await create_ticket("Fix DNS", "broken", "Dev Manager", "Infra Planner", "urgent")
     assert "Error" in result
     assert "invalid priority" in result
 
 
 @pytest.mark.asyncio
 async def test_create_ticket_empty_title():
-    result = await create_ticket("", "broken", "Dev Manager", "Infra Worker")
+    result = await create_ticket("", "broken", "Dev Manager", "Infra Planner")
     assert "Error" in result
     assert "title" in result
 
 
 @pytest.mark.asyncio
 async def test_create_ticket_empty_description():
-    result = await create_ticket("Fix DNS", "", "Dev Manager", "Infra Worker")
+    result = await create_ticket("Fix DNS", "", "Dev Manager", "Infra Planner")
     assert "Error" in result
     assert "description" in result
 
@@ -150,7 +150,7 @@ async def test_create_ticket_dedupe_rejected():
 
     with patch("mcp_hub.tools.ticket_tools.async_session", return_value=ctx):
         result = await create_ticket(
-            "Fix DNS", "DNS broken on VLAN 40", "Dev Manager", "Infra Worker"
+            "Fix DNS", "DNS broken on VLAN 40", "Dev Manager", "Infra Planner"
         )
 
     assert "duplicate" in result
@@ -182,7 +182,7 @@ async def test_create_ticket_rate_limit_rejected():
     )
 
     with patch("mcp_hub.tools.ticket_tools.async_session", return_value=ctx):
-        result = await create_ticket("New Task", "Something new", "Dev Manager", "Infra Worker")
+        result = await create_ticket("New Task", "Something new", "Dev Manager", "Infra Planner")
 
     assert "rate_limited" in result
     assert "10" in result
@@ -209,7 +209,7 @@ async def test_create_ticket_refile_cap_rejected():
     )
 
     with patch("mcp_hub.tools.ticket_tools.async_session", return_value=ctx):
-        result = await create_ticket("Fix DNS", "DNS broken again", "Dev Manager", "Infra Worker")
+        result = await create_ticket("Fix DNS", "DNS broken again", "Dev Manager", "Infra Planner")
 
     assert "refile_cap" in result
     assert "2" in result
@@ -267,7 +267,7 @@ async def test_list_tickets_invalid_status():
 async def test_get_ticket_found():
     ctx, session = _mock_session()
     comment = MagicMock(spec=TicketComment)
-    comment.role = "Infra Worker"
+    comment.role = "Infra Planner"
     comment.content = "Working on it"
     comment.created_at = datetime.now(UTC)
 
@@ -374,16 +374,16 @@ async def test_add_comment_success():
     session.get = AsyncMock(return_value=ticket)
 
     with patch("mcp_hub.tools.ticket_tools.async_session", return_value=ctx):
-        result = await add_comment(1, "Infra Worker", "Started working on this")
+        result = await add_comment(1, "Infra Planner", "Started working on this")
     assert "Comment added" in result
-    assert "Infra Worker" in result
+    assert "Infra Planner" in result
     session.add.assert_called_once()
     session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_add_comment_empty():
-    result = await add_comment(1, "Infra Worker", "   ")
+    result = await add_comment(1, "Infra Planner", "   ")
     assert "Error" in result
     assert "empty" in result
 
@@ -394,7 +394,7 @@ async def test_add_comment_ticket_not_found():
     session.get = AsyncMock(return_value=None)
 
     with patch("mcp_hub.tools.ticket_tools.async_session", return_value=ctx):
-        result = await add_comment(999, "Infra Worker", "hello")
+        result = await add_comment(999, "Infra Planner", "hello")
     assert "not found" in result
 
 
