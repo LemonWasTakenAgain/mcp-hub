@@ -19,6 +19,9 @@ from mcp_hub.tools import (
     mr_review_tools,
     ticket_tools,
 )
+from mcp_hub.tools import (
+    kvm as kvm_tools,
+)
 
 # Allow the MCP Hub hostname for DNS rebinding protection
 _allowed_hosts = ["localhost", "localhost:8500", "127.0.0.1:8500", "192.168.1.40:8500"]
@@ -534,6 +537,76 @@ async def canary_record_run(
     return await canary_tools.record_canary_run(
         project_id, branch, outcome, elapsed_seconds, mr_iid, error
     )
+
+
+# -- KVM Tools --
+
+
+@mcp.tool()
+async def kvm_ports() -> str:
+    """List configured KVM ports (port number, name, management IP, notes)."""
+    return await kvm_tools.list_ports()
+
+
+@mcp.tool()
+async def kvm_status(port: int = 0) -> str:
+    """Get ATX, streamer, and HID status for the current KVM port.
+
+    Pass port=1..4 to switch to that port first. port=0 (default) uses the currently selected port.
+    """
+    return await kvm_tools.status(port)
+
+
+@mcp.tool()
+async def kvm_snap(port: int = 0) -> str:
+    """Capture a JPEG snapshot of the current HDMI frame.
+
+    Pass port=1..4 to switch first. Returns base64-encoded JPEG.
+    """
+    return await kvm_tools.snap(port)
+
+
+@mcp.tool()
+async def kvm_ocr(port: int = 0, psm: int = 6) -> str:
+    """OCR the current HDMI frame using tesseract.
+
+    Pass port=1..4 to switch first. psm controls tesseract page segmentation mode (default 6).
+    """
+    return await kvm_tools.ocr(port, psm)
+
+
+@mcp.tool()
+async def kvm_switch(port: int) -> str:
+    """Switch the multi-KVM to a specific port via Ctrl-Ctrl-<digit> hotkey.
+
+    WARNING: DISRUPTIVE — sends USB HID keyboard events that may interrupt whatever is
+    running on the target machine. Refuses if keyboard HID is offline (check kvm_status first).
+    port must be 1, 2, 3, or 4.
+    """
+    return await kvm_tools.switch(port)
+
+
+@mcp.tool()
+async def kvm_power(port: int = 0, action: str = "on", confirm: bool = False) -> str:
+    """Emulate the ATX power button on the target machine.
+
+    WARNING: DISRUPTIVE — on/off send a momentary power button press. hard-off forces
+    an immediate power cut (long press) and requires confirm=True to prevent accidents.
+    Valid actions: on, off, reset, hard-off.
+    Pass port=1..4 to switch first.
+    """
+    return await kvm_tools.power(port, action, confirm)
+
+
+@mcp.tool()
+async def kvm_send_keys(port: int = 0, text: str = "") -> str:
+    """Type literal text on the target machine via USB HID keyboard emulation.
+
+    WARNING: DISRUPTIVE — keystrokes are delivered directly to whatever has keyboard focus
+    on the target. Refuses if keyboard HID is offline (check kvm_status first).
+    text is capped at 4096 characters. Pass port=1..4 to switch first.
+    """
+    return await kvm_tools.send_keys(port, text)
 
 
 # -- Audit Trail Tools --
