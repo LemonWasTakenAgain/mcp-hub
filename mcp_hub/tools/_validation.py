@@ -58,6 +58,28 @@ def _is_private_ip(hostname: str) -> bool:
     return False
 
 
+_VALID_KVM_PORTS = frozenset({1, 2, 3, 4})
+
+
+def validate_kvm_port(port: int) -> int:
+    """Validate KVM port number (1-4). Port 0 means 'current port, no switch'."""
+    if port == 0:
+        return 0
+    if port not in _VALID_KVM_PORTS:
+        raise ValueError(f"Invalid KVM port: {port}. Must be 1, 2, 3, or 4.")
+    return port
+
+
+_VALID_POWER_ACTIONS = frozenset({"on", "off", "reset", "hard-off"})
+
+
+def validate_power_action(action: str) -> str:
+    """Validate ATX power action."""
+    if action not in _VALID_POWER_ACTIONS:
+        raise ValueError(f"Invalid action: {action!r}. Must be one of: on, off, reset, hard-off.")
+    return action
+
+
 def validate_url(url: str, *, allow_private: bool = False) -> str:
     """Validate an HTTP(S) URL. Blocks RFC1918/private IPs unless allow_private=True."""
     url = url.strip()
