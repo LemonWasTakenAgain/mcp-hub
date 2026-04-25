@@ -890,6 +890,47 @@ async def api_record_canary_run(request: Request, session: AsyncSession = Depend
     return {"id": run.id, "outcome": outcome, "branch": run.branch}
 
 
+@app.get("/api/service-locks")
+async def api_list_service_locks(
+    active_only: bool = True,
+    service: str = "",
+    limit: int = 50,
+    session: AsyncSession = Depends(get_session),
+):
+    """List service locks. Read-only endpoint for dashboards.
+
+    active_only=true (default): only locks with released_at IS NULL
+    service: filter by service name
+    """
+    from mcp_hub.models.service_lock import ServiceLock
+
+    query = select(ServiceLock).order_by(ServiceLock.acquired_at.desc()).limit(min(limit, 200))
+    if active_only:
+        query = query.where(ServiceLock.released_at.is_(None))
+    if service:
+        query = query.where(ServiceLock.service == service.strip().lower())
+
+    locks = (await session.execute(query)).scalars().all()
+    return {
+        "locks": [
+            {
+                "id": lock.id,
+                "service": lock.service,
+                "holder_role": lock.holder_role,
+                "holder_session_id": lock.holder_session_id,
+                "reason": lock.reason,
+                "acquired_at": lock.acquired_at.isoformat(),
+                "released_at": lock.released_at.isoformat() if lock.released_at else None,
+                "expected_back_at": (
+                    lock.expected_back_at.isoformat() if lock.expected_back_at else None
+                ),
+            }
+            for lock in locks
+        ],
+        "total": len(locks),
+    }
+
+
 @app.get("/api/logs")
 async def get_logs(
     limit: int = 50, tool_name: str = "", session: AsyncSession = Depends(get_session)

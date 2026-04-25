@@ -13,6 +13,7 @@ from mcp_hub.config import settings
 from mcp_hub.database import async_session
 from mcp_hub.models.audit_log import write_audit_entry
 from mcp_hub.models.mr_review import MrReview, ReviewResetLog
+from mcp_hub.models.service_lock import LOCK_AUTO_EXPIRE_HOURS, ServiceLock
 from mcp_hub.models.ticket import Ticket, TicketComment
 
 logger = logging.getLogger("mcp_hub.tasks")
@@ -321,6 +322,37 @@ async def _sha_drift_reset() -> None:
         logger.info("SHA drift reset: %d review(s) reset to pending", reset_count)
 
 
+async def _expire_stale_locks() -> None:
+    """Auto-release service locks held longer than LOCK_AUTO_EXPIRE_HOURS.
+
+    Safety net for agents that crash or forget to call service_unlock().
+    """
+    cutoff = datetime.now(UTC) - timedelta(hours=LOCK_AUTO_EXPIRE_HOURS)
+    async with async_session() as session:
+        result = await session.execute(
+            select(ServiceLock).where(
+                ServiceLock.released_at.is_(None),
+                ServiceLock.acquired_at < cutoff,
+            )
+        )
+        stale = result.scalars().all()
+        if not stale:
+            return
+
+        now = datetime.now(UTC)
+        for lock in stale:
+            lock.released_at = now
+            logger.warning(
+                "Auto-expired stale service lock #%d: '%s' held by %s since %s",
+                lock.id,
+                lock.service,
+                lock.holder_role,
+                lock.acquired_at,
+            )
+        await session.commit()
+        logger.info("Lock expiry sweep: auto-released %d stale lock(s)", len(stale))
+
+
 async def run_periodic(func, interval_seconds: int, name: str) -> None:
     """Run func periodically on a fixed interval."""
     logger.info("Starting periodic task '%s' every %ds", name, interval_seconds)
@@ -350,6 +382,10 @@ def start_background_tasks() -> list[asyncio.Task]:
         asyncio.create_task(
             run_periodic(_sha_drift_reset, interval_seconds=60, name="sha_drift_reset"),
             name="sha_drift_reset",
+        ),
+        asyncio.create_task(
+            run_periodic(_expire_stale_locks, interval_seconds=300, name="expire_stale_locks"),
+            name="expire_stale_locks",
         ),
     ]
     return tasks
