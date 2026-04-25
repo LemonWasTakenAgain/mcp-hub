@@ -17,6 +17,7 @@ from mcp_hub.tools import (
     k8s_tools,
     marketing_tools,
     mr_review_tools,
+    service_lock_tools,
     ticket_tools,
 )
 from mcp_hub.tools import (
@@ -622,3 +623,62 @@ async def ticket_history(ticket_id: int) -> str:
 async def mr_review_history(project_id: int, mr_iid: int) -> str:
     """Return the full verdict transition audit trail for an MR review."""
     return await audit_tools.mr_review_history(project_id, mr_iid)
+
+
+# -- Service Lock Tools --
+
+
+@mcp.tool()
+async def service_lock(
+    service: str,
+    holder_role: str,
+    reason: str,
+    expected_back_at: str = "",
+    holder_session_id: str = "",
+) -> str:
+    """Acquire a service lock before taking a shared service down for maintenance.
+
+    Call this before restarting/patching gitlab, mcp-hub, k8s-control-plane, argocd, etc.
+    Other agents will call service_status() to check for locks before retrying failures.
+
+    service: short lowercase name, e.g. 'gitlab', 'mcp-hub', 'k8s-control-plane'
+    expected_back_at: optional ISO8601 timestamp when the service will be back up
+    holder_session_id: optional session/agent identifier for traceability
+    Returns lock_id to use with service_unlock().
+    """
+    return await service_lock_tools.lock_service(
+        service, holder_role, reason, expected_back_at, holder_session_id
+    )
+
+
+@mcp.tool()
+async def service_unlock(lock_id: int, message: str = "") -> str:
+    """Release a service lock when the service is healthy again.
+
+    Pass the lock_id returned by service_lock(). Optionally include a message
+    describing what was done (e.g. 'patch applied, health checks passed').
+    """
+    return await service_lock_tools.unlock_service(lock_id, message)
+
+
+@mcp.tool()
+async def service_status(service: str) -> str:
+    """Check whether a shared service is currently locked for maintenance.
+
+    Call this before retrying a failed API call — if the service is locked,
+    back off and wait rather than flooding it with retries or filing cascading tickets.
+
+    Returns locked: false if available, or lock details (holder, reason, since,
+    expected_back_at) if locked.
+    """
+    return await service_lock_tools.get_service_status(service)
+
+
+@mcp.tool()
+async def service_locks_list(active_only: bool = True, limit: int = 50) -> str:
+    """List service locks. By default shows only active (unreleased) locks.
+
+    active_only=true (default): currently held locks only
+    active_only=false: all locks including released history
+    """
+    return await service_lock_tools.list_service_locks(active_only, limit)
