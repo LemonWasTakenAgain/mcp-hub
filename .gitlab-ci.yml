@@ -151,14 +151,15 @@ build:docker:
 
 # -- Deploy --
 
-deploy:k8s:
+deploy:rollout-restart:
   stage: deploy
+  needs: [build:docker]
   image: bitnami/kubectl:latest
   script:
-    - kubectl set image deployment/mcp-hub mcp-hub=$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA -n steelcanvas
+    - kubectl rollout restart deployment/mcp-hub -n steelcanvas
+    - kubectl rollout status deployment/mcp-hub -n steelcanvas --timeout=300s
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
-      when: manual
 
 # ── Mirror: Push to GitHub backup ─────────────────────────────────────────────
 include:
