@@ -36,6 +36,8 @@ from mcp_hub.models import Base, MrCanaryRun, MrReview, ReviewResetLog, Ticket, 
 from mcp_hub.models.audit_log import write_audit_entry
 from mcp_hub.models.idempotency import IdempotencyRecord
 from mcp_hub.models.mr_review import VALID_VERDICTS, VERDICT_TRANSITIONS
+from mcp_hub.models.solution_pattern import VALID_OUTCOMES as SP_VALID_OUTCOMES
+from mcp_hub.models.solution_pattern import SolutionPattern
 from mcp_hub.models.ticket import VALID_STATUSES, VALID_TRANSITIONS
 from mcp_hub.proxy.env_resolver import resolve_registry
 from mcp_hub.proxy.manager import ProxyManager
@@ -888,6 +890,170 @@ async def api_record_canary_run(request: Request, session: AsyncSession = Depend
     await session.refresh(run)
     logger.info("Canary run #%d recorded: %s (%s)", run.id, outcome, run.branch)
     return {"id": run.id, "outcome": outcome, "branch": run.branch}
+
+
+# -- Solution Patterns API --
+
+
+@app.get("/api/solution-patterns/aggregate")
+async def api_aggregate_solution_patterns(
+    group_by: str = "role",
+    since: str = "",
+    session: AsyncSession = Depends(get_session),
+):
+    """Aggregate solution patterns. group_by: role|model|outcome. since: ISO date."""
+    from sqlalchemy import func as sqlfunc
+
+    group_map = {
+        "role": SolutionPattern.agent_role,
+        "model": SolutionPattern.model_assigned,
+        "outcome": SolutionPattern.outcome,
+    }
+    if group_by not in group_map:
+        return JSONResponse(
+            {"error": f"Invalid group_by: {group_by}. Valid: role, model, outcome"},
+            status_code=400,
+        )
+
+    group_col = group_map[group_by]
+    query = select(
+        group_col.label("group_value"),
+        sqlfunc.count().label("count"),
+        sqlfunc.avg(SolutionPattern.duration_seconds).label("avg_duration"),
+        sqlfunc.max(SolutionPattern.duration_seconds).label("max_duration"),
+        sqlfunc.avg(SolutionPattern.tool_calls).label("avg_tool_calls"),
+        sqlfunc.avg(SolutionPattern.errors).label("avg_errors"),
+        sqlfunc.avg(SolutionPattern.mr_pipeline_runs).label("avg_pipeline_runs"),
+    ).group_by(group_col)
+
+    if since:
+        try:
+            since_dt = dt.fromisoformat(since)
+        except ValueError:
+            return JSONResponse({"error": f"Invalid since date: {since}"}, status_code=400)
+        query = query.where(SolutionPattern.created_at >= since_dt)
+
+    rows = (await session.execute(query)).all()
+
+    def safe_rate(errors: float, tools: float) -> float:
+        if not tools or tools == 0:
+            return 0.0
+        return round(errors / tools, 4)
+
+    return {
+        "group_by": group_by,
+        "since": since,
+        "aggregates": [
+            {
+                "group": r.group_value or "(unset)",
+                "count": r.count,
+                "avg_duration_seconds": round(float(r.avg_duration or 0), 1),
+                "max_duration_seconds": int(r.max_duration or 0),
+                "avg_tool_calls": round(float(r.avg_tool_calls or 0), 1),
+                "avg_errors": round(float(r.avg_errors or 0), 2),
+                "error_rate": safe_rate(float(r.avg_errors or 0), float(r.avg_tool_calls or 1)),
+                "avg_pipeline_runs": round(float(r.avg_pipeline_runs or 0), 1),
+            }
+            for r in rows
+        ],
+        "total_groups": len(rows),
+    }
+
+
+@app.get("/api/solution-patterns")
+async def api_list_solution_patterns(
+    agent_role: str = "",
+    outcome: str = "",
+    since: str = "",
+    limit: int = 50,
+    session: AsyncSession = Depends(get_session),
+):
+    """List solution pattern records with optional filters."""
+    query = select(SolutionPattern).order_by(SolutionPattern.created_at.desc())
+    if agent_role:
+        query = query.where(SolutionPattern.agent_role == agent_role)
+    if outcome:
+        query = query.where(SolutionPattern.outcome == outcome)
+    if since:
+        try:
+            since_dt = dt.fromisoformat(since)
+        except ValueError:
+            return JSONResponse({"error": f"Invalid since date: {since}"}, status_code=400)
+        query = query.where(SolutionPattern.created_at >= since_dt)
+    query = query.limit(min(limit, 100))
+
+    rows = (await session.execute(query)).scalars().all()
+    return {
+        "patterns": [
+            {
+                "id": r.id,
+                "ticket_id": r.ticket_id,
+                "agent_role": r.agent_role,
+                "model_assigned": r.model_assigned,
+                "duration_seconds": r.duration_seconds,
+                "tool_calls": r.tool_calls,
+                "unique_tool_calls": r.unique_tool_calls,
+                "retries": r.retries,
+                "errors": r.errors,
+                "mr_iid": r.mr_iid,
+                "mr_pipeline_runs": r.mr_pipeline_runs,
+                "freeze_gaps_count": r.freeze_gaps_count,
+                "freeze_gaps_total_seconds": r.freeze_gaps_total_seconds,
+                "estimated_cost_usd": (
+                    float(r.estimated_cost_usd) if r.estimated_cost_usd else None
+                ),
+                "outcome": r.outcome,
+                "notes": r.notes,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in rows
+        ],
+        "total": len(rows),
+    }
+
+
+@app.post("/api/solution-patterns")
+async def api_create_solution_pattern(
+    request: Request, session: AsyncSession = Depends(get_session)
+):
+    """Create a solution pattern record. Used by the dispatcher after ticket completion."""
+    body = await request.json()
+    required = ["ticket_id", "agent_role", "duration_seconds", "outcome"]
+    for field in required:
+        if field not in body:
+            return JSONResponse({"error": f"Missing required field: {field}"}, status_code=400)
+
+    if body["outcome"] not in SP_VALID_OUTCOMES:
+        return JSONResponse(
+            {"error": (f"Invalid outcome: {body['outcome']}. Valid: {sorted(SP_VALID_OUTCOMES)}")},
+            status_code=400,
+        )
+
+    pattern = SolutionPattern(
+        ticket_id=body["ticket_id"],
+        agent_role=body["agent_role"],
+        model_assigned=body.get("model_assigned"),
+        duration_seconds=body["duration_seconds"],
+        tool_calls=body.get("tool_calls", 0),
+        unique_tool_calls=body.get("unique_tool_calls", 0),
+        retries=body.get("retries", 0),
+        errors=body.get("errors", 0),
+        mr_iid=body.get("mr_iid"),
+        mr_pipeline_runs=body.get("mr_pipeline_runs", 0),
+        freeze_gaps_count=body.get("freeze_gaps_count", 0),
+        freeze_gaps_total_seconds=body.get("freeze_gaps_total_seconds", 0),
+        estimated_cost_usd=body.get("estimated_cost_usd"),
+        outcome=body["outcome"],
+        notes=body.get("notes"),
+    )
+    session.add(pattern)
+    await session.commit()
+    await session.refresh(pattern)
+    return {
+        "id": pattern.id,
+        "ticket_id": pattern.ticket_id,
+        "created_at": pattern.created_at.isoformat(),
+    }
 
 
 @app.get("/api/service-locks")

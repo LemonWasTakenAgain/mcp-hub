@@ -18,6 +18,7 @@ from mcp_hub.tools import (
     marketing_tools,
     mr_review_tools,
     service_lock_tools,
+    solution_pattern_tools,
     ticket_tools,
 )
 from mcp_hub.tools import (
@@ -682,3 +683,81 @@ async def service_locks_list(active_only: bool = True, limit: int = 50) -> str:
     active_only=false: all locks including released history
     """
     return await service_lock_tools.list_service_locks(active_only, limit)
+
+
+# -- Solution Pattern Tools --
+
+
+@mcp.tool()
+async def solution_pattern_create(
+    ticket_id: int,
+    agent_role: str,
+    duration_seconds: int,
+    outcome: str,
+    model_assigned: str = "",
+    tool_calls: int = 0,
+    unique_tool_calls: int = 0,
+    retries: int = 0,
+    errors: int = 0,
+    mr_iid: int = 0,
+    mr_pipeline_runs: int = 0,
+    freeze_gaps_count: int = 0,
+    freeze_gaps_total_seconds: int = 0,
+    estimated_cost_usd: float = 0.0,
+    notes: str = "",
+) -> str:
+    """Record solution metrics for a completed ticket.
+
+    Called by the dispatcher after ticket reaches final state.
+    """
+    return await solution_pattern_tools.create_pattern(
+        ticket_id=ticket_id,
+        agent_role=agent_role,
+        duration_seconds=duration_seconds,
+        outcome=outcome,
+        model_assigned=model_assigned or None,
+        tool_calls=tool_calls,
+        unique_tool_calls=unique_tool_calls,
+        retries=retries,
+        errors=errors,
+        mr_iid=mr_iid or None,
+        mr_pipeline_runs=mr_pipeline_runs,
+        freeze_gaps_count=freeze_gaps_count,
+        freeze_gaps_total_seconds=freeze_gaps_total_seconds,
+        estimated_cost_usd=estimated_cost_usd or None,
+        notes=notes or None,
+    )
+
+
+@mcp.tool()
+async def solution_pattern_list(
+    agent_role: str = "",
+    outcome: str = "",
+    since: str = "",
+    limit: int = 50,
+) -> str:
+    """List solution pattern records. Use for retrospectives.
+
+    since= is ISO date (e.g. 2026-04-01).
+    """
+    return await solution_pattern_tools.list_patterns(
+        agent_role=agent_role,
+        outcome=outcome,
+        since=since,
+        limit=limit,
+    )
+
+
+@mcp.tool()
+async def solution_pattern_aggregate(
+    group_by: str = "role",
+    since: str = "",
+) -> str:
+    """Aggregate solution patterns by role, model, or outcome.
+
+    Returns avg/max duration, error rates.
+    """
+    return await solution_pattern_tools.aggregate_patterns(
+        group_by=group_by,
+        since=since,
+    )
