@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import httpx
 from sqlalchemy import delete, func, select
@@ -29,7 +30,7 @@ JMAP_PROPERTIES = [
 ]
 
 
-def _addr_list(addrs: list[dict] | None) -> str:
+def _addr_list(addrs: list[dict[str, Any]] | None) -> str:
     """Format JMAP address list to 'Name <email>' strings."""
     if not addrs:
         return ""
@@ -46,7 +47,7 @@ def _jmap_auth() -> tuple[str, str]:
     return settings.stalwart_jmap_url, settings.stalwart_jmap_token
 
 
-async def _jmap_request(method_calls: list) -> dict:
+async def _jmap_request(method_calls: list[Any]) -> dict[str, Any]:
     """Execute a JMAP request against Stalwart."""
     url, token = _jmap_auth()
     if not url:
@@ -61,10 +62,12 @@ async def _jmap_request(method_calls: list) -> dict:
         "methodCalls": method_calls,
     }
 
-    async with httpx.AsyncClient(verify=False, timeout=30) as client:  # noqa: S501
+    # Stalwart JMAP runs on the internal mailserver with a self-signed cert; the
+    # only callers are inside the cluster, so we skip TLS verification here.
+    async with httpx.AsyncClient(verify=False, timeout=30) as client:  # noqa: S501  # nosec B501
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
-        return resp.json()
+        return cast(dict[str, Any], resp.json())
 
 
 async def sync_emails(limit: int = 200) -> str:

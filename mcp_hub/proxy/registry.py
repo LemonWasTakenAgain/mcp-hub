@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -40,7 +41,7 @@ class UpstreamServer:
     circuit_breaker_threshold: int = 3
     circuit_breaker_cooldown: float = 60.0
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.prefix:
             self.prefix = self.name.replace("-", "_")
 
@@ -104,9 +105,9 @@ class UpstreamRegistry:
 
     def to_yaml(self, path: str | Path) -> None:
         """Save registry to a YAML config file."""
-        data: dict = {"upstreams": {}}
+        data: dict[str, Any] = {"upstreams": {}}
         for name, server in self.servers.items():
-            entry: dict = {
+            entry: dict[str, Any] = {
                 "transport": server.transport.value,
                 "enabled": server.enabled,
                 "description": server.description,

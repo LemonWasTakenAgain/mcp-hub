@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import func, select, text
 
@@ -170,7 +171,7 @@ async def db_search(query: str, table: str = "", limit: int = 20) -> str:
     pattern = f"%{query}%"
 
     # Map tables to their searchable text columns
-    search_map: dict[str, list[tuple]] = {
+    search_map: dict[str, list[tuple[Any, list[Any]]]] = {
         "tickets": [
             (Ticket, [Ticket.title, Ticket.description, Ticket.result, Ticket.denial_reason]),
         ],
@@ -276,7 +277,7 @@ async def db_table_detail(table: str, limit: int = 20, offset: int = 0) -> str:
         total = (await session.execute(select(func.count()).select_from(model))).scalar() or 0
 
         # Get rows (order by primary key desc for most recent first)
-        q = select(model).order_by(model.id.desc()).limit(limit).offset(offset)
+        q = select(model).order_by(model.id.desc()).limit(limit).offset(offset)  # type: ignore[attr-defined]  # why: all TABLE_MODELS entries have an id column but Base doesn't declare it
         rows = (await session.execute(q)).scalars().all()
 
         if not rows:

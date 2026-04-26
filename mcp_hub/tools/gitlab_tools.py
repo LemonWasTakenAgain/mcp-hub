@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from typing import Any, cast
 
 import httpx
 
@@ -13,7 +14,9 @@ _MAX_RETRIES = 3
 _RETRY_BACKOFF = 1.0
 
 
-async def _gitlab_request(method: str, path: str, *, json: dict | None = None) -> dict | list:
+async def _gitlab_request(
+    method: str, path: str, *, json: dict[str, Any] | None = None
+) -> dict[str, Any] | list[Any]:
     """Make an authenticated request to the GitLab API with retry logic."""
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES):
@@ -25,7 +28,7 @@ async def _gitlab_request(method: str, path: str, *, json: dict | None = None) -
             ) as client:
                 resp = await client.request(method, f"/api/v4{path}", json=json)
                 resp.raise_for_status()
-                return resp.json()
+                return cast(dict[str, Any] | list[Any], resp.json())
         except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
             last_exc = e
             if attempt < _MAX_RETRIES - 1:
@@ -59,12 +62,12 @@ async def _gitlab_request(method: str, path: str, *, json: dict | None = None) -
     raise last_exc  # type: ignore[misc]
 
 
-async def _gitlab_get(path: str) -> dict | list:
+async def _gitlab_get(path: str) -> dict[str, Any] | list[Any]:
     """Make an authenticated GET request to the GitLab API."""
     return await _gitlab_request("GET", path)
 
 
-async def _gitlab_post(path: str, json: dict | None = None) -> dict:
+async def _gitlab_post(path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
     """Make an authenticated POST request to the GitLab API."""
     result = await _gitlab_request("POST", path, json=json)
     return result  # type: ignore[return-value]
@@ -80,7 +83,7 @@ async def list_projects(search: str = "", per_page: int = 20) -> str:
     params = f"?per_page={min(per_page, 100)}&order_by=updated_at"
     if search:
         params += f"&search={search}"
-    projects = await _gitlab_get(f"/projects{params}")
+    projects = cast(list[Any], await _gitlab_get(f"/projects{params}"))
     lines = []
     for p in projects:
         lines.append(
@@ -98,7 +101,8 @@ async def get_project_pipelines(project_id: int, per_page: int = 10) -> str:
         project_id: The GitLab project ID
         per_page: Number of pipelines to return (default 10)
     """
-    pipelines = await _gitlab_get(f"/projects/{project_id}/pipelines?per_page={min(per_page, 50)}")
+    url = f"/projects/{project_id}/pipelines?per_page={min(per_page, 50)}"
+    pipelines = cast(list[Any], await _gitlab_get(url))
     lines = []
     for p in pipelines:
         lines.append(
@@ -114,7 +118,9 @@ async def get_pipeline_jobs(project_id: int, pipeline_id: int) -> str:
         project_id: The GitLab project ID
         pipeline_id: The pipeline ID
     """
-    jobs = await _gitlab_get(f"/projects/{project_id}/pipelines/{pipeline_id}/jobs")
+    jobs = cast(
+        list[Any], await _gitlab_get(f"/projects/{project_id}/pipelines/{pipeline_id}/jobs")
+    )
     lines = []
     for j in jobs:
         duration = f"{j.get('duration', 0):.1f}s" if j.get("duration") else "n/a"
@@ -130,8 +136,11 @@ async def list_merge_requests(project_id: int, state: str = "opened", per_page: 
         state: MR state filter (opened, closed, merged, all)
         per_page: Number of results (default 10)
     """
-    mrs = await _gitlab_get(
-        f"/projects/{project_id}/merge_requests?state={state}&per_page={min(per_page, 50)}"
+    mrs = cast(
+        list[Any],
+        await _gitlab_get(
+            f"/projects/{project_id}/merge_requests?state={state}&per_page={min(per_page, 50)}"
+        ),
     )
     lines = []
     for mr in mrs:
@@ -149,7 +158,7 @@ async def create_project(name: str, namespace_id: int | None = None) -> str:
         name: Project name
         namespace_id: Optional namespace/group ID to create project in
     """
-    payload: dict = {
+    payload: dict[str, Any] = {
         "name": name,
         "visibility": "internal",
         "initialize_with_readme": True,

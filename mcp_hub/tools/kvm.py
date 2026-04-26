@@ -13,7 +13,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import yaml
@@ -21,10 +21,10 @@ import yaml
 from mcp_hub.tools._validation import validate_kvm_port, validate_power_action
 
 _CONFIG_PATH = Path("/etc/mcp-hub/pikvm.yaml")
-_config: dict | None = None
+_config: dict[str, Any] | None = None
 
 
-def _load_config() -> dict | None:
+def _load_config() -> dict[str, Any] | None:
     """Load config from /etc/mcp-hub/pikvm.yaml. Returns None if missing."""
     global _config
     if _config is not None:
@@ -54,7 +54,7 @@ class PikvmClient:
         self._verify_tls = verify_tls
 
     async def get(
-        self, path: str, query: dict | None = None, accept: str = "application/json"
+        self, path: str, query: dict[str, str] | None = None, accept: str = "application/json"
     ) -> tuple[int, bytes]:
         """GET a path. Returns (status_code, body_bytes)."""
         url = self._base_url + path
@@ -68,7 +68,7 @@ class PikvmClient:
             )
             return resp.status_code, resp.content
 
-    async def post(self, path: str, query: dict | None = None) -> dict:
+    async def post(self, path: str, query: dict[str, str] | None = None) -> dict[str, Any]:
         """POST a path with optional query params. Returns parsed JSON."""
         url = self._base_url + path
         async with httpx.AsyncClient(verify=self._verify_tls) as client:
@@ -79,7 +79,7 @@ class PikvmClient:
                 timeout=10.0,
             )
             if resp.content:
-                return resp.json()
+                return cast(dict[str, Any], resp.json())
             return {"ok": True}
 
     async def snap(self) -> bytes:
@@ -120,16 +120,16 @@ class PikvmClient:
         """Send a key press/release. state: 1=press, 0=release."""
         await self.post("/api/hid/events/send_key", query={"key": key, "state": str(state)})
 
-    async def atx_click(self, button: str) -> dict:
+    async def atx_click(self, button: str) -> dict[str, Any]:
         """POST /api/atx/click?button=<button>."""
         return await self.post("/api/atx/click", query={"button": button})
 
-    async def atx_press_long(self, button: str) -> dict:
+    async def atx_press_long(self, button: str) -> dict[str, Any]:
         """POST /api/atx/press_long?button=<button>."""
         return await self.post("/api/atx/press_long", query={"button": button})
 
 
-async def _switch_port(client: PikvmClient, cfg: dict, port: int) -> None:
+async def _switch_port(client: PikvmClient, cfg: dict[str, Any], port: int) -> None:
     """Send Ctrl-Ctrl-<digit> hotkey to switch multi-KVM port."""
     hid_status, hid_body = await client.get("/api/hid")
     hid = json.loads(hid_body)["result"]
@@ -152,7 +152,7 @@ async def _switch_port(client: PikvmClient, cfg: dict, port: int) -> None:
     await asyncio.sleep(mk.get("settle_ms", 800) / 1000)
 
 
-def _make_client(cfg: dict, creds: tuple[str, str]) -> PikvmClient:
+def _make_client(cfg: dict[str, Any], creds: tuple[str, str]) -> PikvmClient:
     """Create a PikvmClient from config and credentials."""
     pikvm = cfg["pikvm"]
     return PikvmClient(

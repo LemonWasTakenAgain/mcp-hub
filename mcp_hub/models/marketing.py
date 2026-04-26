@@ -41,7 +41,7 @@ class MarketingProject(Base):
     website_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     repo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     gitlab_project_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    metadata_: Mapped[dict[str, object] | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -73,7 +73,7 @@ class MarketingCampaign(Base):
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     lessons_learned: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    metadata_: Mapped[dict[str, object] | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -34,6 +34,7 @@ dev = [
     "pytest-cov>=6.0.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
+    "types-PyYAML>=6.0.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -53,3 +54,11 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
+
+[[tool.mypy.overrides]]
+module = "kubernetes.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "mcp.server.sse"
+ignore_missing_imports = true

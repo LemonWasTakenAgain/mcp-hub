@@ -9,6 +9,7 @@ import platform
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from mcp_hub.tools._validation import validate_hostname, validate_port, validate_url
 
@@ -143,7 +144,7 @@ async def dispatcher_health() -> str:
     dispatcher_threshold = 300
     monitor_threshold = 360
 
-    def _check_heartbeat(hb_path: Path, threshold: int) -> dict:
+    def _check_heartbeat(hb_path: Path, threshold: int) -> dict[str, Any]:
         if not hb_path.exists():
             return {
                 "healthy": False,

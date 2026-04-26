@@ -23,7 +23,7 @@ def _get_k8s_client() -> Any:
     return client
 
 
-def _run_sync(func, *args, **kwargs):
+def _run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
     """Run a synchronous kubernetes-client call in a thread."""
     return asyncio.to_thread(functools.partial(func, *args, **kwargs))
 

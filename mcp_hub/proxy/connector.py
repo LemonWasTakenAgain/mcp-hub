@@ -55,6 +55,7 @@ class UpstreamConnection:
                     await self._connect_sse()
 
                 # Initialize the session
+                assert self.session is not None, "session must be set by transport connect"
                 await self.session.initialize()
 
                 # Discover tools
@@ -80,6 +81,7 @@ class UpstreamConnection:
 
     async def _connect_stdio(self) -> None:
         """Connect via stdio transport (spawns a subprocess)."""
+        assert self._stack is not None, "_stack must be initialized before _connect_stdio"
         params = StdioServerParameters(
             command=self.server.command,
             args=self.server.args,
@@ -93,6 +95,7 @@ class UpstreamConnection:
 
     async def _connect_sse(self) -> None:
         """Connect via SSE transport (HTTP connection)."""
+        assert self._stack is not None, "_stack must be initialized before _connect_sse"
         sse_transport = await self._stack.enter_async_context(
             sse_client(
                 url=self.server.url,
@@ -104,7 +107,7 @@ class UpstreamConnection:
             ClientSession(read_stream, write_stream)
         )
 
-    async def call_tool(self, tool_name: str, arguments: dict | None = None) -> str:
+    async def call_tool(self, tool_name: str, arguments: dict[str, object] | None = None) -> str:
         """Call a tool on the upstream server with retries."""
         if not self.connected or not self.session:
             raise ConnectionError(f"Not connected to {self.server.name}")
@@ -127,7 +130,7 @@ class UpstreamConnection:
                     if hasattr(content, "text"):
                         parts.append(content.text)
                     elif hasattr(content, "data"):
-                        parts.append(f"[binary data: {content.mimeType}]")
+                        parts.append(f"[binary data: {getattr(content, 'mimeType', 'unknown')}]")
                     else:
                         parts.append(str(content))
                 self._consecutive_failures = 0
@@ -177,6 +180,7 @@ class UpstreamConnection:
         """Re-discover tools from the upstream server."""
         if not self.connected or not self.session:
             await self.connect()
+        assert self.session is not None, "session must be set after connect()"
         result = await self.session.list_tools()
         self.tools = result.tools
         return self.tools
@@ -196,7 +200,7 @@ class UpstreamConnection:
             logger.info("Disconnected from %s", self.server.name)
 
     @property
-    def status(self) -> dict:
+    def status(self) -> dict[str, object]:
         return {
             "name": self.server.name,
             "transport": self.server.transport.value,

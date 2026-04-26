@@ -47,12 +47,12 @@ async def mr_review_history(project_id: int, mr_iid: int) -> str:
         if not review:
             return f"No review record found for PID={project_id} !{mr_iid}"
 
-        result = await session.execute(
+        audit_result = await session.execute(
             select(AuditLog)
             .where(AuditLog.entity_type == "mr_review", AuditLog.entity_id == review.id)
             .order_by(AuditLog.changed_at.asc())
         )
-        entries = result.scalars().all()
+        entries = audit_result.scalars().all()
 
         if not entries:
             return f"No audit history found for PID={project_id} !{mr_iid} (review #{review.id})"

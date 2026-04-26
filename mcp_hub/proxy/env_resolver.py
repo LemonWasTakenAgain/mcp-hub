@@ -16,7 +16,7 @@ ENV_PATTERN = re.compile(r"\$\{(\w+)\}")
 def resolve_env_vars(value: str) -> str:
     """Replace ${VAR_NAME} placeholders with actual environment variable values."""
 
-    def _replace(match: re.Match) -> str:
+    def _replace(match: re.Match[str]) -> str:
         var_name = match.group(1)
         resolved = os.environ.get(var_name, "")
         if not resolved:
