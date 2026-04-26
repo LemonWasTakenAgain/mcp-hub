@@ -75,6 +75,7 @@ def _make_ticket(**overrides) -> Ticket:
 def _mock_session():
     """Create a mock async session context manager."""
     session = AsyncMock()
+    session.add = MagicMock()  # session.add is sync on AsyncSession
     ctx = AsyncMock()
     ctx.__aenter__ = AsyncMock(return_value=session)
     ctx.__aexit__ = AsyncMock(return_value=False)
