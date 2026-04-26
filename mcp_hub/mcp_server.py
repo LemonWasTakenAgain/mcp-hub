@@ -5,7 +5,10 @@ from __future__ import annotations
 import os
 
 from mcp.server.fastmcp import FastMCP
-from mcp.server.sse import TransportSecuritySettings
+from mcp.server.fastmcp.tools.base import Tool as FastMCPTool
+from mcp.server.sse import (  # type: ignore[attr-defined]  # why: not explicitly exported but present at runtime
+    TransportSecuritySettings,
+)
 
 from mcp_hub.tools import (
     audit_tools,
@@ -50,7 +53,7 @@ mcp = FastMCP(
 # Avoids direct access to mcp._tool_manager._tools throughout the codebase.
 
 
-def get_registered_tools() -> dict:
+def get_registered_tools() -> dict[str, FastMCPTool]:
     """Get all registered tools from the MCP server."""
     return dict(mcp._tool_manager._tools)
 
@@ -60,7 +63,7 @@ def get_tool_names() -> list[str]:
     return sorted(mcp._tool_manager._tools.keys())
 
 
-def register_tool(name: str, tool) -> None:
+def register_tool(name: str, tool: FastMCPTool) -> None:
     """Register a tool on the MCP server by name."""
     mcp._tool_manager._tools[name] = tool
 

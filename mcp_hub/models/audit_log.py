@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mcp_hub.models.base import Base
@@ -22,7 +23,7 @@ class AuditLog(Base):
 
 
 async def write_audit_entry(
-    session,
+    session: AsyncSession,
     entity_type: str,
     entity_id: int,
     from_status: str | None,

@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from mcp_hub.database import async_session
@@ -38,7 +39,7 @@ def _validate_url_optional(url: str) -> str | None:
     return validate_url(url)
 
 
-async def _unique_slug(session, base_slug: str) -> str:
+async def _unique_slug(session: AsyncSession, base_slug: str) -> str:
     """Generate a unique slug, appending -2, -3, ... -10 on collision."""
     for suffix in [""] + [f"-{i}" for i in range(2, 11)]:
         candidate = f"{base_slug}{suffix}" if suffix else base_slug

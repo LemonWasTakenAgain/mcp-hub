@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections.abc
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -353,7 +354,11 @@ async def _expire_stale_locks() -> None:
         logger.info("Lock expiry sweep: auto-released %d stale lock(s)", len(stale))
 
 
-async def run_periodic(func, interval_seconds: int, name: str) -> None:
+async def run_periodic(
+    func: collections.abc.Callable[[], collections.abc.Awaitable[None]],
+    interval_seconds: int,
+    name: str,
+) -> None:
     """Run func periodically on a fixed interval."""
     logger.info("Starting periodic task '%s' every %ds", name, interval_seconds)
     while True:
@@ -364,7 +369,7 @@ async def run_periodic(func, interval_seconds: int, name: str) -> None:
             logger.error("Periodic task '%s' failed: %s", name, e)
 
 
-def start_background_tasks() -> list[asyncio.Task]:
+def start_background_tasks() -> list[asyncio.Task[None]]:
     """Start all background maintenance tasks. Call from lifespan startup."""
     tasks = [
         asyncio.create_task(

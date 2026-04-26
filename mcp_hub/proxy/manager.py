@@ -6,8 +6,10 @@ import asyncio
 import logging
 import time
 from pathlib import Path
+from typing import Any, cast
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import BaseModel
 
 from mcp_hub.mcp_server import register_tool, unregister_tool
 from mcp_hub.proxy.connector import UpstreamConnection
@@ -24,7 +26,7 @@ class ProxyManager:
         self.mcp_server = mcp_server
         self.connections: dict[str, UpstreamConnection] = {}
         self._tool_map: dict[str, tuple[UpstreamConnection, str]] = {}
-        self._health_task: asyncio.Task | None = None
+        self._health_task: asyncio.Task[None] | None = None
         self._reconnect_locks: dict[str, asyncio.Lock] = {}
         self._reconnect_attempts: dict[str, int] = {}
 
@@ -114,7 +116,7 @@ class ProxyManager:
         )
 
     @staticmethod
-    def _build_arg_model(input_schema: dict) -> type:
+    def _build_arg_model(input_schema: dict[str, Any]) -> type[Any]:
         """Build a dynamic Pydantic model from a JSON Schema for argument validation.
 
         This creates an ArgModelBase subclass whose fields match the upstream tool's
@@ -129,7 +131,7 @@ class ProxyManager:
         properties = input_schema.get("properties", {})
         required = set(input_schema.get("required", []))
 
-        field_definitions: dict[str, tuple] = {}
+        field_definitions: dict[str, tuple[Any, Any]] = {}
         for name, prop in properties.items():
             annotation = TypingAny
             desc = prop.get("description", "")
@@ -161,7 +163,7 @@ class ProxyManager:
                 namespace["__annotations__"][name] = annotation
                 namespace[name] = field
             model = type("DynamicArgs", (ArgModelBase,), namespace)
-            model.model_rebuild()
+            cast(type[BaseModel], model).model_rebuild()
 
         return model
 
@@ -169,7 +171,7 @@ class ProxyManager:
         self,
         proxied_name: str,
         description: str,
-        input_schema: dict,
+        input_schema: dict[str, Any],
         conn: UpstreamConnection,
         original_name: str,
     ) -> None:
@@ -179,7 +181,7 @@ class ProxyManager:
         _original = original_name
         _name = proxied_name
 
-        async def proxy_handler(**kwargs) -> str:
+        async def proxy_handler(**kwargs: Any) -> str:
             start = time.monotonic()
             try:
                 filtered = {k: v for k, v in kwargs.items() if v is not None} if kwargs else None
@@ -215,10 +217,13 @@ class ProxyManager:
         tool = FastMCPTool(
             fn=proxy_handler,
             name=proxied_name,
+            title=None,
             description=description,
             parameters=input_schema if input_schema else {"type": "object", "properties": {}},
             fn_metadata=metadata,
             is_async=True,
+            context_kwarg=None,
+            annotations=None,
         )
         register_tool(proxied_name, tool)
 
@@ -309,7 +314,7 @@ class ProxyManager:
         self.registry.add(server)
         return await self._connect_server(server)
 
-    def get_status(self) -> dict:
+    def get_status(self) -> dict[str, Any]:
         """Get status of all upstream connections."""
         return {
             "total_servers": len(self.connections),

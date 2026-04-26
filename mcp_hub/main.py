@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections.abc
 import json
 import logging
 import time
@@ -10,6 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, timedelta
 from datetime import datetime as dt
 from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -54,7 +56,7 @@ _STATIC_DIR = _BASE_DIR / "static"
 proxy_manager: ProxyManager | None = None
 
 
-def _add_missing_columns(connection) -> None:
+def _add_missing_columns(connection: Any) -> None:
     """Detect columns in ORM models missing from the DB and add them.
 
     create_all only creates new tables — it won't ALTER existing ones.
@@ -93,7 +95,7 @@ def _load_registry() -> UpstreamRegistry:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> collections.abc.AsyncGenerator[None, None]:
     """Startup/shutdown lifecycle."""
     global proxy_manager
 
@@ -135,7 +137,7 @@ async def lifespan(app: FastAPI):
     # Start background maintenance tasks
     from mcp_hub.tasks import start_background_tasks
 
-    _bg_tasks: list[asyncio.Task] = start_background_tasks()
+    _bg_tasks: list[asyncio.Task[None]] = start_background_tasks()
     logger.info("Started %d background maintenance tasks", len(_bg_tasks))
 
     yield
@@ -162,8 +164,11 @@ app = FastAPI(
 )
 
 
+_CallNext = collections.abc.Callable[[Request], collections.abc.Awaitable[Response]]
+
+
 @app.middleware("http")
-async def security_and_metrics(request: Request, call_next) -> Response:
+async def security_and_metrics(request: Request, call_next: _CallNext) -> Response:
     """Add security headers and track request metrics."""
     start = time.monotonic()
     response = await call_next(request)
@@ -190,7 +195,7 @@ async def security_and_metrics(request: Request, call_next) -> Response:
 
 
 @app.middleware("http")
-async def idempotency_middleware(request: Request, call_next):
+async def idempotency_middleware(request: Request, call_next: _CallNext) -> Response:
     """Replay cached response for duplicate PATCH/POST with Idempotency-Key header."""
     idem_key = request.headers.get("Idempotency-Key", "").strip()
     path = request.url.path
@@ -216,7 +221,7 @@ async def idempotency_middleware(request: Request, call_next):
     # Cache the response if successful (2xx)
     if 200 <= response.status_code < 300:
         body_bytes = b""
-        async for chunk in response.body_iterator:
+        async for chunk in response.body_iterator:  # type: ignore[attr-defined]  # why: FastAPI middleware call_next returns a _StreamingResponse with body_iterator, not typed in starlette stubs
             body_bytes += chunk
         try:
             body_dict = json.loads(body_bytes)
@@ -252,26 +257,28 @@ app.add_route("/metrics", metrics_endpoint)
 
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, session: AsyncSession = Depends(get_session)):
+async def dashboard(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     """Main dashboard page."""
-    tool_stats = []
-    recent_logs = []
+    tool_stats: list[Any] = []
+    recent_logs: list[Any] = []
     total = 0
 
     try:
-        tool_stats = (
-            await session.execute(
-                select(
-                    ToolLog.tool_name,
-                    func.count(ToolLog.id).label("count"),
-                    func.avg(ToolLog.duration_ms).label("avg_duration"),
+        tool_stats = list(
+            (
+                await session.execute(
+                    select(
+                        ToolLog.tool_name,
+                        func.count(ToolLog.id).label("count"),
+                        func.avg(ToolLog.duration_ms).label("avg_duration"),
+                    )
+                    .group_by(ToolLog.tool_name)
+                    .order_by(func.count(ToolLog.id).desc())
                 )
-                .group_by(ToolLog.tool_name)
-                .order_by(func.count(ToolLog.id).desc())
-            )
-        ).all()
+            ).all()
+        )
 
-        recent_logs = (
+        recent_logs = list(
             (await session.execute(select(ToolLog).order_by(ToolLog.created_at.desc()).limit(20)))
             .scalars()
             .all()
@@ -292,6 +299,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     proxied_tools = [t for t in registered_tools if "__" in t]
 
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
             "request": request,
@@ -308,13 +316,13 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
 
 
 @app.get("/healthz")
-async def healthz():
+async def healthz() -> JSONResponse:
     """Liveness probe — returns 200 if the process is alive."""
-    return {"status": "alive"}
+    return JSONResponse({"status": "alive"})
 
 
 @app.get("/health")
-async def health(session: AsyncSession = Depends(get_session)):
+async def health(session: AsyncSession = Depends(get_session)) -> JSONResponse:
     """Readiness probe — returns 503 only if DB is down. Upstream proxy status is
     reported but does not gate readiness, so core API (tickets, reviews, REST)
     stays reachable even when upstream MCP servers are temporarily disconnected."""
@@ -336,7 +344,7 @@ async def health(session: AsyncSession = Depends(get_session)):
 
     proxy_healthy = connected >= total / 2 if total > 0 else True
 
-    result = {
+    result: dict[str, Any] = {
         "status": "healthy" if db_ok else "degraded",
         "database": "connected" if db_ok else "disconnected",
         "mcp_tools": len(tool_names),
@@ -356,7 +364,7 @@ async def health(session: AsyncSession = Depends(get_session)):
 
 
 @app.get("/api/tools")
-async def list_tools():
+async def list_tools() -> dict[str, Any]:
     """List all registered MCP tools (local + proxied)."""
     tools = []
     tool_map = proxy_manager.get_tool_map() if proxy_manager else {}
@@ -373,7 +381,7 @@ async def list_tools():
 
 
 @app.get("/api/proxy/status")
-async def proxy_status_endpoint():
+async def proxy_status_endpoint() -> dict[str, Any]:
     """Get proxy manager status — all upstream connections."""
     if not proxy_manager:
         return {"enabled": False, "message": "Proxy is disabled"}
@@ -381,7 +389,7 @@ async def proxy_status_endpoint():
 
 
 @app.post("/api/proxy/reconnect/{server_name}")
-async def proxy_reconnect(server_name: str):
+async def proxy_reconnect(server_name: str) -> dict[str, Any]:
     """Reconnect to a specific upstream MCP server."""
     if not proxy_manager:
         return {"error": "Proxy is disabled"}
@@ -390,7 +398,7 @@ async def proxy_reconnect(server_name: str):
 
 
 @app.get("/api/proxy/tools")
-async def proxy_tool_map():
+async def proxy_tool_map() -> dict[str, Any]:
     """Get the mapping of proxied tool names to upstream sources."""
     if not proxy_manager:
         return {"enabled": False}
@@ -407,7 +415,7 @@ async def api_list_tickets(
     to_role: str = "",
     limit: int = 20,
     session: AsyncSession = Depends(get_session),
-):
+) -> dict[str, Any]:
     """List tickets with optional filters. Used by the ticket dispatcher."""
     query = select(Ticket).order_by(Ticket.priority.asc(), Ticket.created_at.desc())
     if status:
@@ -443,8 +451,10 @@ async def api_list_tickets(
     }
 
 
-@app.post("/api/tickets")
-async def api_create_ticket(request: Request, session: AsyncSession = Depends(get_session)):
+@app.post("/api/tickets", response_model=None)
+async def api_create_ticket(
+    request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
     """Create a new ticket. Used by automated scripts (e.g. canary runner) and the dispatcher."""
     from mcp_hub.models.ticket import VALID_PRIORITIES
 
@@ -476,8 +486,10 @@ async def api_create_ticket(request: Request, session: AsyncSession = Depends(ge
     return {"id": ticket.id, "title": ticket.title, "status": ticket.status}
 
 
-@app.get("/api/tickets/{ticket_id}")
-async def api_get_ticket(ticket_id: int, session: AsyncSession = Depends(get_session)):
+@app.get("/api/tickets/{ticket_id}", response_model=None)
+async def api_get_ticket(
+    ticket_id: int, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
     """Get a single ticket by ID."""
     ticket = await session.get(Ticket, ticket_id)
     if not ticket:
@@ -500,10 +512,10 @@ async def api_get_ticket(ticket_id: int, session: AsyncSession = Depends(get_ses
     }
 
 
-@app.patch("/api/tickets/{ticket_id}")
+@app.patch("/api/tickets/{ticket_id}", response_model=None)
 async def api_update_ticket(
     ticket_id: int, request: Request, session: AsyncSession = Depends(get_session)
-):
+) -> dict[str, Any] | JSONResponse:
     """Update ticket fields. Used by the dispatcher for triage and status updates."""
     ticket = await session.get(Ticket, ticket_id)
     if not ticket:
@@ -558,7 +570,7 @@ async def api_list_reviews(
     author_role: str = "",
     limit: int = 20,
     session: AsyncSession = Depends(get_session),
-):
+) -> dict[str, Any]:
     """List MR reviews with optional filters. Used by the review dispatcher."""
     query = select(MrReview).order_by(MrReview.updated_at.desc())
     if project_id:
@@ -599,8 +611,10 @@ async def api_list_reviews(
     }
 
 
-@app.get("/api/reviews/{review_id}")
-async def api_get_review(review_id: int, session: AsyncSession = Depends(get_session)):
+@app.get("/api/reviews/{review_id}", response_model=None)
+async def api_get_review(
+    review_id: int, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
     """Get a single MR review by ID."""
     review = await session.get(MrReview, review_id)
     if not review:
@@ -628,8 +642,10 @@ async def api_get_review(review_id: int, session: AsyncSession = Depends(get_ses
     }
 
 
-@app.post("/api/reviews")
-async def api_create_review(request: Request, session: AsyncSession = Depends(get_session)):
+@app.post("/api/reviews", response_model=None)
+async def api_create_review(
+    request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
     """Create or update an MR review record. Used by the dispatcher when it finds a new MR."""
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -688,7 +704,7 @@ async def api_create_review(request: Request, session: AsyncSession = Depends(ge
     result = (await session.execute(stmt)).one()
     was_update = old_row is not None
 
-    if was_update and old_row.verdict not in ("pending", None):
+    if old_row is not None and old_row.verdict not in ("pending", None):
         old_commit = old_row.commit_sha
         new_commit = body.get("commit_sha", "unknown")
         session.add(
@@ -714,10 +730,10 @@ async def api_create_review(request: Request, session: AsyncSession = Depends(ge
     return {"id": result.id, "verdict": result.verdict, "updated": was_update}
 
 
-@app.patch("/api/reviews/{review_id}")
+@app.patch("/api/reviews/{review_id}", response_model=None)
 async def api_update_review(
     review_id: int, request: Request, session: AsyncSession = Depends(get_session)
-):
+) -> dict[str, Any] | JSONResponse:
     """Update MR review fields. Used by the dispatcher after sonnet review."""
     review = await session.get(MrReview, review_id)
     if not review:
@@ -788,8 +804,10 @@ async def api_update_review(
     return {"id": review_id, "updated": updates}
 
 
-@app.post("/api/reviews/claim")
-async def api_claim_review(request: Request, session: AsyncSession = Depends(get_session)):
+@app.post("/api/reviews/claim", response_model=None)
+async def api_claim_review(
+    request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
     """Set author_role on an existing review by (project_id, mr_iid).
 
     Called by agents immediately after pushing an MR so mr_review_mine() returns results.
@@ -835,7 +853,7 @@ async def api_list_canary_runs(
     limit: int = 20,
     outcome: str = "",
     session: AsyncSession = Depends(get_session),
-):
+) -> dict[str, Any]:
     """List recent MR canary run results. Used by dashboards and monitoring."""
     query = select(MrCanaryRun).order_by(MrCanaryRun.created_at.desc()).limit(min(limit, 100))
     if outcome:
@@ -859,8 +877,10 @@ async def api_list_canary_runs(
     }
 
 
-@app.post("/api/canary-runs")
-async def api_record_canary_run(request: Request, session: AsyncSession = Depends(get_session)):
+@app.post("/api/canary-runs", response_model=None)
+async def api_record_canary_run(
+    request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
     """Record a canary run result. Called by the canary runner script after each run."""
     from mcp_hub.models.canary import VALID_OUTCOMES
 
@@ -895,12 +915,12 @@ async def api_record_canary_run(request: Request, session: AsyncSession = Depend
 # -- Solution Patterns API --
 
 
-@app.get("/api/solution-patterns/aggregate")
+@app.get("/api/solution-patterns/aggregate", response_model=None)
 async def api_aggregate_solution_patterns(
     group_by: str = "role",
     since: str = "",
     session: AsyncSession = Depends(get_session),
-):
+) -> dict[str, Any] | JSONResponse:
     """Aggregate solution patterns. group_by: role|model|outcome. since: ISO date."""
     from sqlalchemy import func as sqlfunc
 
@@ -960,14 +980,14 @@ async def api_aggregate_solution_patterns(
     }
 
 
-@app.get("/api/solution-patterns")
+@app.get("/api/solution-patterns", response_model=None)
 async def api_list_solution_patterns(
     agent_role: str = "",
     outcome: str = "",
     since: str = "",
     limit: int = 50,
     session: AsyncSession = Depends(get_session),
-):
+) -> dict[str, Any] | JSONResponse:
     """List solution pattern records with optional filters."""
     query = select(SolutionPattern).order_by(SolutionPattern.created_at.desc())
     if agent_role:
@@ -1012,10 +1032,10 @@ async def api_list_solution_patterns(
     }
 
 
-@app.post("/api/solution-patterns")
+@app.post("/api/solution-patterns", response_model=None)
 async def api_create_solution_pattern(
     request: Request, session: AsyncSession = Depends(get_session)
-):
+) -> dict[str, Any] | JSONResponse:
     """Create a solution pattern record. Used by the dispatcher after ticket completion."""
     body = await request.json()
     required = ["ticket_id", "agent_role", "duration_seconds", "outcome"]
@@ -1062,7 +1082,7 @@ async def api_list_service_locks(
     service: str = "",
     limit: int = 50,
     session: AsyncSession = Depends(get_session),
-):
+) -> dict[str, Any]:
     """List service locks. Read-only endpoint for dashboards.
 
     active_only=true (default): only locks with released_at IS NULL
@@ -1100,7 +1120,7 @@ async def api_list_service_locks(
 @app.get("/api/logs")
 async def get_logs(
     limit: int = 50, tool_name: str = "", session: AsyncSession = Depends(get_session)
-):
+) -> dict[str, Any]:
     """Get tool invocation logs."""
     query = select(ToolLog).order_by(ToolLog.created_at.desc()).limit(min(limit, 200))
     if tool_name:
