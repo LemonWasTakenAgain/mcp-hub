@@ -609,7 +609,7 @@ async def api_update_ticket(
 # -- Improvement REST endpoints --
 
 
-@app.get("/api/improvements")
+@app.get("/api/improvements", response_model=None)
 async def api_list_improvements(
     status: str = "",
     category: str = "",
@@ -617,7 +617,7 @@ async def api_list_improvements(
     agent_role: str = "",
     limit: int = 50,
     session: AsyncSession = Depends(get_session),
-) -> dict[str, Any]:
+) -> dict[str, Any] | JSONResponse:
     """List improvements with optional filters."""
     from mcp_hub.models.improvement import (
         VALID_CATEGORIES,
@@ -666,7 +666,7 @@ async def api_list_improvements(
     }
 
 
-@app.get("/api/improvements/{improvement_id}")
+@app.get("/api/improvements/{improvement_id}", response_model=None)
 async def api_get_improvement(
     improvement_id: int, session: AsyncSession = Depends(get_session)
 ) -> dict[str, Any] | JSONResponse:
