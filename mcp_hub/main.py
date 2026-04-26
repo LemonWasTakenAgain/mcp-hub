@@ -606,6 +606,229 @@ async def api_update_ticket(
     return {"id": ticket_id, "updated": updates}
 
 
+# -- Improvement REST endpoints --
+
+
+@app.get("/api/improvements", response_model=None)
+async def api_list_improvements(
+    status: str = "",
+    category: str = "",
+    severity: str = "",
+    agent_role: str = "",
+    limit: int = 50,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any] | JSONResponse:
+    """List improvements with optional filters."""
+    from mcp_hub.models.improvement import (
+        VALID_CATEGORIES,
+        VALID_IMPROVEMENT_STATUSES,
+        VALID_SEVERITIES,
+        Improvement,
+    )
+
+    query = select(Improvement).order_by(Improvement.created_at.desc())
+    if status:
+        if status not in VALID_IMPROVEMENT_STATUSES:
+            return JSONResponse({"error": f"Invalid status '{status}'"}, status_code=400)
+        query = query.where(Improvement.status == status)
+    if category:
+        if category not in VALID_CATEGORIES:
+            return JSONResponse({"error": f"Invalid category '{category}'"}, status_code=400)
+        query = query.where(Improvement.category == category)
+    if severity:
+        if severity not in VALID_SEVERITIES:
+            return JSONResponse({"error": f"Invalid severity '{severity}'"}, status_code=400)
+        query = query.where(Improvement.severity == severity)
+    if agent_role:
+        query = query.where(Improvement.agent_role == agent_role)
+    query = query.limit(min(limit, 100))
+
+    improvements = (await session.execute(query)).scalars().all()
+    return {
+        "improvements": [
+            {
+                "id": i.id,
+                "agent_role": i.agent_role,
+                "category": i.category,
+                "severity": i.severity,
+                "status": i.status,
+                "title": i.title,
+                "description": i.description,
+                "related_ticket_id": i.related_ticket_id,
+                "comments_count": i.comments_count,
+                "created_at": i.created_at.isoformat(),
+                "updated_at": i.updated_at.isoformat(),
+                "resolved_at": i.resolved_at.isoformat() if i.resolved_at else None,
+            }
+            for i in improvements
+        ],
+        "total": len(improvements),
+    }
+
+
+@app.get("/api/improvements/{improvement_id}", response_model=None)
+async def api_get_improvement(
+    improvement_id: int, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
+    """Get a single improvement by ID with comments."""
+    from sqlalchemy.orm import selectinload as si
+
+    from mcp_hub.models.improvement import Improvement  # noqa: F401
+
+    result = await session.execute(
+        select(Improvement)
+        .where(Improvement.id == improvement_id)
+        .options(si(Improvement.comments))
+    )
+    improvement = result.scalar_one_or_none()
+    if not improvement:
+        return JSONResponse({"error": f"Improvement #{improvement_id} not found"}, status_code=404)
+    return {
+        "id": improvement.id,
+        "agent_role": improvement.agent_role,
+        "category": improvement.category,
+        "severity": improvement.severity,
+        "status": improvement.status,
+        "title": improvement.title,
+        "description": improvement.description,
+        "related_ticket_id": improvement.related_ticket_id,
+        "comments_count": improvement.comments_count,
+        "created_at": improvement.created_at.isoformat(),
+        "updated_at": improvement.updated_at.isoformat(),
+        "resolved_at": improvement.resolved_at.isoformat() if improvement.resolved_at else None,
+        "comments": [
+            {
+                "id": c.id,
+                "role": c.role,
+                "content": c.content,
+                "created_at": c.created_at.isoformat(),
+            }
+            for c in improvement.comments
+        ],
+    }
+
+
+@app.post("/api/improvements", response_model=None)
+async def api_create_improvement(
+    request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
+    """Create an improvement record (admin/internal use)."""
+    from mcp_hub.models.improvement import VALID_CATEGORIES, VALID_SEVERITIES, Improvement
+    from mcp_hub.models.ticket import VALID_ROLES
+
+    body = await request.json()
+    required = ["agent_role", "category", "severity", "title", "description"]
+    for field in required:
+        if field not in body:
+            return JSONResponse({"error": f"Missing required field: {field}"}, status_code=400)
+
+    if body["agent_role"] not in VALID_ROLES:
+        return JSONResponse(
+            {"error": f"Invalid agent_role '{body['agent_role']}'"}, status_code=400
+        )
+    if body["category"] not in VALID_CATEGORIES:
+        return JSONResponse({"error": f"Invalid category '{body['category']}'"}, status_code=400)
+    if body["severity"] not in VALID_SEVERITIES:
+        return JSONResponse({"error": f"Invalid severity '{body['severity']}'"}, status_code=400)
+
+    improvement = Improvement(
+        agent_role=body["agent_role"],
+        category=body["category"],
+        severity=body["severity"],
+        title=body["title"][:255],
+        description=body["description"][:8192],
+        related_ticket_id=body.get("related_ticket_id"),
+    )
+    session.add(improvement)
+    await session.commit()
+    await session.refresh(improvement)
+    return {"id": improvement.id, "title": improvement.title, "status": improvement.status}
+
+
+@app.patch("/api/improvements/{improvement_id}", response_model=None)
+async def api_update_improvement(
+    improvement_id: int, request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
+    """Update improvement status or severity."""
+    from datetime import UTC, datetime
+
+    from mcp_hub.models.improvement import (
+        VALID_IMPROVEMENT_STATUSES,
+        VALID_IMPROVEMENT_TRANSITIONS,
+        VALID_SEVERITIES,
+        Improvement,
+    )
+
+    result = await session.execute(select(Improvement).where(Improvement.id == improvement_id))
+    improvement = result.scalar_one_or_none()
+    if not improvement:
+        return JSONResponse({"error": f"Improvement #{improvement_id} not found"}, status_code=404)
+
+    body = await request.json()
+    updates = []
+
+    if "status" in body:
+        new_status = body["status"]
+        if new_status not in VALID_IMPROVEMENT_STATUSES:
+            return JSONResponse({"error": f"Invalid status '{new_status}'"}, status_code=400)
+        allowed = VALID_IMPROVEMENT_TRANSITIONS.get(improvement.status, set())
+        if new_status not in allowed:
+            return JSONResponse(
+                {"error": f"Cannot transition from '{improvement.status}' to '{new_status}'"},
+                status_code=400,
+            )
+        improvement.status = new_status
+        if new_status == "resolved":
+            improvement.resolved_at = datetime.now(UTC)
+        updates.append(f"status={new_status}")
+
+    if "severity" in body:
+        new_severity = body["severity"]
+        if new_severity not in VALID_SEVERITIES:
+            return JSONResponse({"error": f"Invalid severity '{new_severity}'"}, status_code=400)
+        improvement.severity = new_severity
+        updates.append(f"severity={new_severity}")
+
+    if not updates:
+        return JSONResponse({"error": "No fields to update"}, status_code=400)
+
+    await session.commit()
+    return {"id": improvement.id, "updates": updates}
+
+
+@app.post("/api/improvements/{improvement_id}/comments", response_model=None)
+async def api_add_improvement_comment(
+    improvement_id: int, request: Request, session: AsyncSession = Depends(get_session)
+) -> dict[str, Any] | JSONResponse:
+    """Add a comment to an improvement."""
+    from mcp_hub.models.improvement import Improvement, ImprovementComment
+    from mcp_hub.models.ticket import VALID_ROLES
+
+    result = await session.execute(select(Improvement).where(Improvement.id == improvement_id))
+    improvement = result.scalar_one_or_none()
+    if not improvement:
+        return JSONResponse({"error": f"Improvement #{improvement_id} not found"}, status_code=404)
+
+    body = await request.json()
+    if "role" not in body or "content" not in body:
+        return JSONResponse({"error": "Missing required fields: role, content"}, status_code=400)
+    if body["role"] not in VALID_ROLES:
+        return JSONResponse({"error": f"Invalid role '{body['role']}'"}, status_code=400)
+    if not body["content"].strip():
+        return JSONResponse({"error": "Content cannot be empty"}, status_code=400)
+
+    comment = ImprovementComment(
+        improvement_id=improvement_id,
+        role=body["role"],
+        content=body["content"].strip(),
+    )
+    session.add(comment)
+    improvement.comments_count += 1
+    await session.commit()
+    await session.refresh(comment)
+    return {"id": comment.id, "improvement_id": improvement_id}
+
+
 # -- MR Review API (for dispatcher) --
 
 

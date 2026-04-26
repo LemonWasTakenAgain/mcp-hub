@@ -5,6 +5,7 @@ from mcp_hub.models.base import Base
 from mcp_hub.models.canary import MrCanaryRun
 from mcp_hub.models.email import EmailMessage, EmailSyncState
 from mcp_hub.models.idempotency import IdempotencyRecord
+from mcp_hub.models.improvement import Improvement, ImprovementComment
 from mcp_hub.models.marketing import MarketingCampaign, MarketingMetric, MarketingProject
 from mcp_hub.models.mr_review import MrReview, ReviewResetLog
 from mcp_hub.models.service_lock import ServiceLock
@@ -18,6 +19,8 @@ __all__ = [
     "EmailMessage",
     "EmailSyncState",
     "IdempotencyRecord",
+    "Improvement",
+    "ImprovementComment",
     "MarketingCampaign",
     "MarketingMetric",
     "MarketingProject",

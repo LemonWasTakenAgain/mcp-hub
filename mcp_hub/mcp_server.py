@@ -17,6 +17,7 @@ from mcp_hub.tools import (
     email_tools,
     gitlab_tools,
     homelab_tools,
+    improvement_tools,
     k8s_tools,
     marketing_tools,
     mr_review_tools,
@@ -228,6 +229,57 @@ async def ticket_comment(ticket_id: int, role: str, content: str) -> str:
 async def ticket_denied(from_role: str = "", limit: int = 10) -> str:
     """List denied tickets with reasons, optionally filtered by creator role."""
     return await ticket_tools.list_denied(from_role, limit)
+
+
+# -- Improvement Tools --
+
+
+@mcp.tool()
+async def improvement_create(
+    agent_role: str,
+    category: str,
+    severity: str,
+    title: str,
+    description: str,
+    related_ticket_id: int | None = None,
+) -> str:
+    """Record agent friction for the improvement log.
+
+    Use for slow tools, awkward flows, recurring failures.
+    """
+    return await improvement_tools.create_improvement(
+        agent_role, category, severity, title, description, related_ticket_id
+    )
+
+
+@mcp.tool()
+async def improvement_list(
+    status: str = "",
+    category: str = "",
+    severity: str = "",
+    agent_role: str = "",
+    limit: int = 50,
+) -> str:
+    """List improvements with optional filters by status, category, severity, or agent."""
+    return await improvement_tools.list_improvements(status, category, severity, agent_role, limit)
+
+
+@mcp.tool()
+async def improvement_get(improvement_id: int) -> str:
+    """Get full improvement details including comments."""
+    return await improvement_tools.get_improvement(improvement_id)
+
+
+@mcp.tool()
+async def improvement_comment(improvement_id: int, role: str, content: str) -> str:
+    """Add a comment to an improvement record."""
+    return await improvement_tools.add_comment(improvement_id, role, content)
+
+
+@mcp.tool()
+async def improvement_update(improvement_id: int, status: str = "", severity: str = "") -> str:
+    """Update improvement status or severity."""
+    return await improvement_tools.update_improvement(improvement_id, status, severity)
 
 
 # -- MR Review Tools --
