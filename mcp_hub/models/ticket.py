@@ -34,6 +34,8 @@ VALID_ROLES = {
     "Marketing Dev",
     "DR Engineer",
     "Agent Dash Dev",
+    "AI Manager",
+    "Security Engineer",
 }
 
 
@@ -79,7 +81,8 @@ class TicketComment(Base):
         CheckConstraint(
             "role IN ('Dev Manager', 'Infra Planner', 'SaaS Dev 1', "
             "'Stock Matrix Dev', 'Dashboard Dev', 'PR Manager', 'AaaS Dev', "
-            "'Marketing Dev', 'DR Engineer', 'Agent Dash Dev')",
+            "'Marketing Dev', 'DR Engineer', 'Agent Dash Dev', "
+            "'AI Manager', 'Security Engineer')",
             name="ck_comment_role",
         ),
     )
