@@ -7,6 +7,7 @@ import collections.abc
 import json
 import logging
 import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, timedelta
 from datetime import datetime as dt
@@ -25,6 +26,7 @@ from starlette.responses import Response
 
 from mcp_hub.config import settings
 from mcp_hub.database import async_session, engine, get_session
+from mcp_hub.logging_config import configure_logging, instrument_tools, request_id_var
 from mcp_hub.mcp_server import get_registered_tools, get_tool_names, mcp
 from mcp_hub.metrics import (
     REQUEST_ERRORS,
@@ -99,11 +101,8 @@ async def lifespan(app: FastAPI) -> collections.abc.AsyncGenerator[None, None]:
     """Startup/shutdown lifecycle."""
     global proxy_manager
 
-    logging.basicConfig(
-        level=logging.DEBUG if settings.debug else logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    )
-    logger.info("MCP Hub starting up (debug=%s)", settings.debug)
+    configure_logging(settings.debug)
+    logger.info("MCP Hub starting up", extra={"event": "startup", "debug": settings.debug})
 
     # Warn about missing critical env vars
     if not settings.gitlab_token:
@@ -139,6 +138,9 @@ async def lifespan(app: FastAPI) -> collections.abc.AsyncGenerator[None, None]:
 
     _bg_tasks: list[asyncio.Task[None]] = start_background_tasks()
     logger.info("Started %d background maintenance tasks", len(_bg_tasks))
+
+    # Instrument all registered tools (local + proxied) with structured logging
+    instrument_tools(mcp)
 
     yield
 
@@ -242,6 +244,50 @@ async def idempotency_middleware(request: Request, call_next: _CallNext) -> Resp
         return JSONResponse(content=body_dict, status_code=response.status_code)
 
     return response
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next: _CallNext) -> Response:
+    """Assign a UUID request_id per request; log HTTP request/response as JSON."""
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+    token = request_id_var.set(request_id)
+    start = time.monotonic()
+
+    extra: dict[str, Any] = {
+        "event": "http_request",
+        "method": request.method,
+        "path": request.url.path,
+    }
+    if request.url.query:
+        extra["query"] = str(request.url.query)
+    logger.info("http_request", extra=extra)
+
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.monotonic() - start) * 1000, 1)
+        logger.info(
+            "http_response",
+            extra={
+                "event": "http_response",
+                "status": response.status_code,
+                "duration_ms": duration_ms,
+            },
+        )
+        return response
+    except Exception:
+        duration_ms = round((time.monotonic() - start) * 1000, 1)
+        logger.error(
+            "http_response",
+            extra={
+                "event": "http_response",
+                "status": 500,
+                "duration_ms": duration_ms,
+            },
+        )
+        raise
+    finally:
+        request_id_var.reset(token)
 
 
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
