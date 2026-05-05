@@ -35,24 +35,12 @@ RUN chown -R lemon:lemon /app
 USER lemon
 ENV PATH="/home/lemon/.local/bin:${PATH}"
 
-# Pre-warm npx/uvx cache for enabled servers (runs once at build time)
-RUN npx -y @modelcontextprotocol/server-github --help 2>/dev/null || true \
-    && npx -y @modelcontextprotocol/server-filesystem --help 2>/dev/null || true \
-    && npx -y @modelcontextprotocol/server-memory --help 2>/dev/null || true \
-    && npx -y @modelcontextprotocol/server-sequential-thinking --help 2>/dev/null || true \
-    && npx -y wikipedia-mcp --help 2>/dev/null || true \
-    && npx -y mcp-server-docker --help 2>/dev/null || true \
-    && npx -y terraform-mcp-server --help 2>/dev/null || true \
-    && npx -y argocd-mcp@latest --help 2>/dev/null || true \
-    && npx -y mcp-server-kubernetes --help 2>/dev/null || true \
-    && uvx mcp-server-time --help 2>/dev/null || true \
-    && uvx arxiv-mcp-server --help 2>/dev/null || true \
-    && uvx mcp-grafana --help 2>/dev/null || true \
-    && uvx prometheus-mcp-server --help 2>/dev/null || true \
-    && uvx mcp-server-qdrant --help 2>/dev/null || true \
-    && npx -y ollama-mcp --help 2>/dev/null || true \
-    && npx -y n8n-mcp-server --help 2>/dev/null || true \
-    && uvx mcp-proxmox --help 2>/dev/null || true
+# Pre-warm cache happens at runtime now — the build-time pre-warm (npx -y of
+# every MCP server) added a ~1 GB layer that breaks registry pushes when the
+# registry storage backend is degraded. Servers will be downloaded lazily on
+# first invocation by the proxy. Re-evaluate if startup latency becomes a
+# problem and a faster-than-network-pull path is needed (e.g., bake a slim
+# subset, or use a sidecar warm-up Job).
 
 EXPOSE 8500
 
